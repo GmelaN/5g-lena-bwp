@@ -1,0 +1,3 @@
+[submodule "contrib/nr"]
+	path = contrib/nr
+	url = https://github.com/GmelaN/5g-lena-bwp
