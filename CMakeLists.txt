@@ -75,6 +75,7 @@ set(source_files
     helper/realistic-beamforming-helper.cc
     helper/scenario-parameters.cc
     helper/three-gpp-ftp-m1-helper.cc
+    model/bwp-manager-algorithm-dynamic.cc
     model/bandwidth-part-gnb.cc
     model/bandwidth-part-ue.cc
     model/beam-id.cc
@@ -262,6 +263,7 @@ set(header_files
     helper/realistic-beamforming-helper.h
     helper/scenario-parameters.h
     helper/three-gpp-ftp-m1-helper.h
+    model/bwp-manager-algorithm-dynamic.h
     model/bandwidth-part-gnb.h
     model/bandwidth-part-ue.h
     model/beam-id.h
@@ -470,6 +472,8 @@ set(test_sources
     test/nr-simple-net-device.cc
     test/nr-simple-spectrum-phy.cc
     test/nr-spectrum-phy-test.cc
+    test/nr-bwp-switch-integration.cc
+    test/nr-bwp-switch-test.cc
     test/nr-system-test-configurations.cc
     test/nr-system-test-schedulers-ofdma-mr.cc
     test/nr-system-test-schedulers-ofdma-pf.cc

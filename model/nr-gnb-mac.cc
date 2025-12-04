@@ -966,6 +966,13 @@ NrGnbMac::SetPhySapProvider(NrPhySapProvider* ptr)
     m_phySapProvider = ptr;
 }
 
+void
+NrGnbMac::SetUeActive(uint16_t rnti, bool active)
+{
+    m_ueActive[rnti] = active;
+    NS_LOG_UNCOND("MAC BWP " << +GetBwpId() << " UE " << rnti << " active=" << active);
+}
+
 NrMacSchedSapUser*
 NrGnbMac::GetNrMacSchedSapUser()
 {
@@ -1209,6 +1216,12 @@ NrGnbMac::DoSchedConfigIndication(NrMacSchedSapUser::SchedConfigIndParameters in
             varTtiAllocInfo.m_dci->m_format == DciInfoElementTdma::DL)
         {
             uint16_t rnti = varTtiAllocInfo.m_dci->m_rnti;
+            auto activeIt = m_ueActive.find(rnti);
+            if (activeIt != m_ueActive.end() && !activeIt->second)
+            {
+                // Skip scheduling DL for inactive UE on this BWP
+                continue;
+            }
             auto rntiIt = m_rlcAttached.find(rnti);
             NS_ABORT_MSG_IF(rntiIt == m_rlcAttached.end(),
                             "Scheduled UE " << rnti << " not attached");

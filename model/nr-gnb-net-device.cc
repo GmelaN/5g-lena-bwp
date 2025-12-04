@@ -335,4 +335,21 @@ NrGnbNetDevice::GetCellIdUlEarfcn(uint16_t cellId) const
     return 0;
 }
 
+Ptr<NrGnbComponentCarrierManager>
+NrGnbNetDevice::GetComponentCarrierManager() const
+{
+    return m_componentCarrierManager;
+}
+
+std::map<uint8_t, Ptr<NrGnbMac>>
+NrGnbNetDevice::GetAllMacs() const
+{
+    std::map<uint8_t, Ptr<NrGnbMac>> res;
+    for (const auto& kv : m_ccMap)
+    {
+        res.emplace(kv.first, kv.second->GetMac());
+    }
+    return res;
+}
+
 } // namespace ns3

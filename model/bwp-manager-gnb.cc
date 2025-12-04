@@ -12,6 +12,11 @@
 #include "ns3/pointer.h"
 #include "ns3/uinteger.h"
 
+#include <limits>
+#include "nr-no-op-component-carrier-manager.h"
+#include "nr-gnb-mac.h"
+
+
 namespace ns3
 {
 
@@ -36,6 +41,11 @@ BwpManagerGnb::GetTypeId()
                             .SetParent<NrNoOpComponentCarrierManager>()
                             .SetGroupName("nr")
                             .AddConstructor<BwpManagerGnb>()
+                            .AddAttribute("SwitchingDelay",
+                                          "Delay between receiving a force command and activating the new BWP.",
+                                          TimeValue(Seconds(0)),
+                                          MakeTimeAccessor(&BwpManagerGnb::m_switchingDelay),
+                                          MakeTimeChecker())
                             .AddAttribute("BwpManagerAlgorithm",
                                           "The algorithm pointer",
                                           PointerValue(),
@@ -49,6 +59,12 @@ BwpManagerGnb::SetBwpManagerAlgorithm(const Ptr<BwpManagerAlgorithm>& algorithm)
 {
     NS_LOG_FUNCTION(this);
     m_algorithm = algorithm;
+}
+
+void
+BwpManagerGnb::SetAttributeSwitchingDelay(Time t)
+{
+    m_switchingDelay = t;
 }
 
 uint8_t
@@ -92,6 +108,13 @@ BwpManagerGnb::GetBwpIndex(uint16_t rnti, uint8_t lcid)
                       m_ueInfo.at(rnti).m_rlcLcInstantiated.end(),
                   "Unknown logical channel of UE");
 
+    auto forced = m_forcedUeBwp.find(rnti);
+    if (forced != m_forcedUeBwp.end())
+    {
+        // Ignore algorithm when a forced BWP is present.
+        return forced->second;
+    }
+
     uint8_t qci = m_ueInfo[rnti].m_rlcLcInstantiated[lcid].qci;
 
     // Force a conversion between the uint8_t type that comes from the LcInfo
@@ -109,6 +132,12 @@ BwpManagerGnb::PeekBwpIndex(uint16_t rnti, uint8_t lcid) const
     NS_ASSERT_MSG(m_ueInfo.at(rnti).m_rlcLcInstantiated.find(lcid) !=
                       m_ueInfo.at(rnti).m_rlcLcInstantiated.end(),
                   "Unknown logical channel of UE");
+
+    auto forced = m_forcedUeBwp.find(rnti);
+    if (forced != m_forcedUeBwp.end())
+    {
+        return forced->second;
+    }
 
     uint8_t qci = m_ueInfo.at(rnti).m_rlcLcInstantiated.at(lcid).qci;
 
@@ -160,9 +189,82 @@ BwpManagerGnb::SetOutputLink(uint32_t sourceBwp, uint32_t outputBwp)
 }
 
 void
+BwpManagerGnb::ForceUeBwp(uint16_t rnti, uint8_t bwpId)
+{
+    NS_LOG_FUNCTION(this << rnti << static_cast<uint32_t>(bwpId));
+    NS_LOG_UNCOND("ForceUeBwp rnti=" << rnti << " targetBwp=" << +bwpId);
+    // Mark switching window: deactivate everywhere now, activate target after delay.
+    Time end = Simulator::Now() + m_switchingDelay;
+    m_switchingUntil[rnti] = end;
+    for (const auto& kv : m_macObjects)
+    {
+        kv.second->SetUeActive(rnti, false);
+    }
+    Simulator::Schedule(m_switchingDelay, [=, this]() {
+        m_forcedUeBwp[rnti] = bwpId;
+        m_switchingUntil.erase(rnti);
+        for (const auto& kv : m_macObjects)
+        {
+            kv.second->SetUeActive(rnti, kv.first == bwpId);
+        }
+        FlushPending(rnti);
+    });
+}
+
+uint8_t
+BwpManagerGnb::GetForcedUeBwp(uint16_t rnti) const
+{
+    auto it = m_forcedUeBwp.find(rnti);
+    if (it == m_forcedUeBwp.end())
+    {
+        return std::numeric_limits<uint8_t>::max();
+    }
+    return it->second;
+}
+
+void
+BwpManagerGnb::SetMacObjects(const std::map<uint8_t, Ptr<NrGnbMac>>& macObjects)
+{
+    m_macObjects = macObjects;
+}
+
+void
+BwpManagerGnb::DoTransmitPdu(NrMacSapProvider::TransmitPduParameters params)
+{
+    NS_LOG_FUNCTION(this);
+
+    auto swIt = m_switchingUntil.find(params.rnti);
+    if (swIt != m_switchingUntil.end() && Simulator::Now() < swIt->second)
+    {
+        m_pendingDlPdu[params.rnti].push_back(params);
+        return;
+    }
+
+    // Override the ccId with a forced BWP if present.
+    auto forcedIt = m_forcedUeBwp.find(params.rnti);
+    if (forcedIt != m_forcedUeBwp.end())
+    {
+        params.componentCarrierId = forcedIt->second;
+    }
+
+    auto it = m_macSapProvidersMap.find(params.componentCarrierId);
+    NS_ABORT_MSG_IF(it == m_macSapProvidersMap.end(),
+                    "could not find Sap for NrComponentCarrier "
+                        << static_cast<uint32_t>(params.componentCarrierId));
+    it->second->TransmitPdu(params);
+}
+
+void
 BwpManagerGnb::DoTransmitBufferStatusReport(NrMacSapProvider::BufferStatusReportParameters params)
 {
     NS_LOG_FUNCTION(this);
+
+    auto swIt = m_switchingUntil.find(params.rnti);
+    if (swIt != m_switchingUntil.end() && Simulator::Now() < swIt->second)
+    {
+        m_pendingBsr[params.rnti].push_back(params);
+        return;
+    }
 
     uint8_t bwpIndex = GetBwpIndex(params.rnti, params.lcid);
 
@@ -203,9 +305,22 @@ BwpManagerGnb::DoUlReceiveMacCe(nr::MacCeListElement_s bsr, uint8_t componentCar
     NS_LOG_DEBUG("Routing BSR for UE " << bsr.m_rnti << " to source CC id "
                                        << static_cast<uint32_t>(componentCarrierId));
 
-    if (m_ccmMacSapProviderMap.find(componentCarrierId) != m_ccmMacSapProviderMap.end())
+    auto swIt = m_switchingUntil.find(bsr.m_rnti);
+    if (swIt != m_switchingUntil.end() && Simulator::Now() < swIt->second)
     {
-        m_ccmMacSapProviderMap.find(componentCarrierId)->second->ReportMacCeToScheduler(bsr);
+        return; // UL CE not queued to keep logic simple
+    }
+
+    auto forcedIt = m_forcedUeBwp.find(bsr.m_rnti);
+    uint8_t targetCc = componentCarrierId;
+    if (forcedIt != m_forcedUeBwp.end())
+    {
+        targetCc = forcedIt->second;
+    }
+
+    if (m_ccmMacSapProviderMap.find(targetCc) != m_ccmMacSapProviderMap.end())
+    {
+        m_ccmMacSapProviderMap.find(targetCc)->second->ReportMacCeToScheduler(bsr);
     }
     else
     {
@@ -219,13 +334,72 @@ BwpManagerGnb::DoUlReceiveSr(uint16_t rnti, uint8_t componentCarrierId)
     NS_LOG_FUNCTION(this);
     NS_ASSERT(m_algorithm != nullptr);
 
-    NS_LOG_DEBUG("Routing SR for UE " << rnti << " to source CC id "
-                                      << static_cast<uint32_t>(componentCarrierId));
+    auto forcedIt = m_forcedUeBwp.find(rnti);
+    auto swIt = m_switchingUntil.find(rnti);
+    if (swIt != m_switchingUntil.end() && Simulator::Now() < swIt->second)
+    {
+        m_pendingSr[rnti].push_back(componentCarrierId);
+        return;
+    }
+    uint8_t targetCc = componentCarrierId;
+    if (forcedIt != m_forcedUeBwp.end())
+    {
+        targetCc = forcedIt->second;
+    }
 
-    auto it = m_ccmMacSapProviderMap.find(componentCarrierId);
+    NS_LOG_DEBUG("Routing SR for UE " << rnti << " to cc id "
+                                      << static_cast<uint32_t>(targetCc));
+
+    auto it = m_ccmMacSapProviderMap.find(targetCc);
     NS_ABORT_IF(it == m_ccmMacSapProviderMap.end());
 
-    m_ccmMacSapProviderMap.find(componentCarrierId)->second->ReportSrToScheduler(rnti);
+    m_ccmMacSapProviderMap.find(targetCc)->second->ReportSrToScheduler(rnti);
+}
+
+void
+BwpManagerGnb::FlushPending(uint16_t rnti)
+{
+    // Flush DL PDUs
+    auto pduIt = m_pendingDlPdu.find(rnti);
+    if (pduIt != m_pendingDlPdu.end())
+    {
+        for (auto params : pduIt->second)
+        {
+            auto forced = m_forcedUeBwp.find(rnti);
+            if (forced != m_forcedUeBwp.end())
+            {
+                params.componentCarrierId = forced->second;
+            }
+            auto it = m_macSapProvidersMap.find(params.componentCarrierId);
+            if (it != m_macSapProvidersMap.end())
+            {
+                it->second->TransmitPdu(params);
+            }
+        }
+        m_pendingDlPdu.erase(pduIt);
+    }
+
+    // Flush BSRs
+    auto bsrIt = m_pendingBsr.find(rnti);
+    if (bsrIt != m_pendingBsr.end())
+    {
+        for (auto params : bsrIt->second)
+        {
+            DoTransmitBufferStatusReport(params);
+        }
+        m_pendingBsr.erase(bsrIt);
+    }
+
+    // Flush SRs
+    auto srIt = m_pendingSr.find(rnti);
+    if (srIt != m_pendingSr.end())
+    {
+        for (auto cc : srIt->second)
+        {
+            DoUlReceiveSr(rnti, cc);
+        }
+        m_pendingSr.erase(srIt);
+    }
 }
 
 } // end of namespace ns3

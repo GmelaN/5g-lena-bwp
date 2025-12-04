@@ -11,6 +11,7 @@
 #include "nr-rlc.h"
 
 #include <unordered_map>
+#include "nr-gnb-mac.h"
 
 namespace ns3
 {
@@ -91,7 +92,34 @@ class BwpManagerGnb : public NrRrComponentCarrierManager
      */
     void SetOutputLink(uint32_t sourceBwp, uint32_t outputBwp);
 
+    /**
+     * @brief Intercepts PDUs from RLC and routes them to the forced BWP if present.
+     */
+    void DoTransmitPdu(NrMacSapProvider::TransmitPduParameters params) override;
+
+    /**
+     * @brief Force a UE to use a specific BWP (override algorithm).
+     * Activates UE on the target BWP and deactivates it on others.
+     */
+    void ForceUeBwp(uint16_t rnti, uint8_t bwpId);
+
+    /**
+     * @brief Get forced BWP for a UE if present, otherwise UINT8_MAX.
+     */
+    uint8_t GetForcedUeBwp(uint16_t rnti) const;
+
+    /**
+     * @brief Set the MAC object map (ccId -> MAC) so we can toggle UE activation per BWP.
+     */
+    void SetMacObjects(const std::map<uint8_t, Ptr<NrGnbMac>>& macObjects);
+
+    /**
+     * @brief Set the delay applied before activating a forced BWP (guard for switch).
+     */
+    void SetAttributeSwitchingDelay(Time t);
+
   protected:
+    // void DoTransmitPdu(NrMacSapProvider::TransmitPduParameters params) override;
     /*
      * @brief This function contains most of the BwpManager logic.
      */
@@ -139,6 +167,22 @@ class BwpManagerGnb : public NrRrComponentCarrierManager
     Ptr<BwpManagerAlgorithm> m_algorithm; //!< The BWP selection algorithm.
 
     std::unordered_map<uint32_t, uint32_t> m_outputLinks; //!< Mapping between BWP.
+
+    // Optional per-UE forced BWP selection (used when MAC triggers a BWP switch).
+    std::unordered_map<uint16_t, uint8_t> m_forcedUeBwp;
+    std::unordered_map<uint16_t, Time> m_switchingUntil; //!< End time of switching guard per UE
+    std::unordered_map<uint16_t, std::vector<NrMacSapProvider::TransmitPduParameters>>
+        m_pendingDlPdu; //!< Queued DL PDUs during switching
+    std::unordered_map<uint16_t, std::vector<NrMacSapProvider::BufferStatusReportParameters>>
+        m_pendingBsr; //!< Queued BSRs during switching
+    std::unordered_map<uint16_t, std::vector<uint8_t>> m_pendingSr; //!< Queued SRs during switching
+
+    // ccId -> MAC object, used to toggle UE activation per BWP.
+    std::map<uint8_t, Ptr<NrGnbMac>> m_macObjects;
+
+    Time m_switchingDelay{Seconds(0)}; //!< Delay before applying a forced BWP switch
+
+    void FlushPending(uint16_t rnti);
 };
 
 } // end of namespace ns3

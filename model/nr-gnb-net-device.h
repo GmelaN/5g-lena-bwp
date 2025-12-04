@@ -190,6 +190,16 @@ class NrGnbNetDevice : public NrNetDevice
      */
     uint32_t GetCellIdUlEarfcn(uint16_t cellId) const;
 
+    /**
+     * @brief Access the component carrier (BWP) manager.
+     */
+    Ptr<NrGnbComponentCarrierManager> GetComponentCarrierManager() const;
+
+    /**
+     * @brief Get all MAC instances (one per BWP).
+     */
+    std::map<uint8_t, Ptr<NrGnbMac>> GetAllMacs() const;
+
   protected:
     void DoInitialize() override;
 

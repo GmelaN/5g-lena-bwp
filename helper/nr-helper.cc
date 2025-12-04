@@ -912,6 +912,18 @@ NrHelper::InstallSingleGnbDevice(
     dev->SetCcMap(ccMap);
     dev->SetAttribute("NrGnbRrc", PointerValue(rrc));
 
+    // Provide MAC object map to BWP manager so ForceUeBwp can toggle UE activation per BWP.
+    auto bwpMgr = DynamicCast<BwpManagerGnb>(ccmGnbManager);
+    if (bwpMgr)
+    {
+        std::map<uint8_t, Ptr<NrGnbMac>> macMap;
+        for (const auto& kv : ccMap)
+        {
+            macMap.emplace(kv.first, kv.second->GetMac());
+        }
+        bwpMgr->SetMacObjects(macMap);
+    }
+
     n->AddDevice(dev);
 
     if (m_nrEpcHelper != nullptr)

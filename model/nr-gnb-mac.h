@@ -88,6 +88,11 @@ class NrGnbMac : public Object
     uint32_t GetNumRbPerRbg() const;
 
     /**
+     * @brief Activate or deactivate a UE for scheduling on this BWP.
+     */
+    void SetUeActive(uint16_t rnti, bool active);
+
+    /**
      * @brief Sets the number of HARQ processes
      * @param numHarqProcess the maximum number of harq processes
      */
@@ -397,6 +402,9 @@ class NrGnbMac : public Object
     // end of RACH related member variables
 
     std::unordered_map<uint16_t, std::unordered_map<uint8_t, NrMacSapUser*>> m_rlcAttached;
+
+    // UE activation flag: only active UEs are scheduled on this BWP.
+    std::unordered_map<uint16_t, bool> m_ueActive;
 
     std::vector<DlHarqInfo> m_dlHarqInfoReceived; // DL HARQ feedback received
     std::vector<UlHarqInfo> m_ulHarqInfoReceived; // UL HARQ feedback received

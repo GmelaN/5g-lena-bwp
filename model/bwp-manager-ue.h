@@ -10,6 +10,8 @@
 #include "nr-simple-ue-component-carrier-manager.h"
 #include "nr-ue-ccm-rrc-sap.h"
 
+#include <limits>
+
 namespace ns3
 {
 
@@ -89,6 +91,22 @@ class BwpManagerUe : public NrSimpleUeComponentCarrierManager
      */
     void SetOutputLink(uint32_t sourceBwp, uint32_t outputBwp);
 
+    /**
+     * @brief Set switching delay.
+     * @param t delay value.
+     */
+    void SetAttributeSwitchingDelay(Time t);
+    /**
+     * @brief Force the active BWP to the given id. UE will keep using this BWP until changed.
+     * @param bwpId the BWP id
+     */
+    void ForceActiveBwp(uint8_t bwpId);
+
+    /**
+     * @return currently forced/active BWP id, or UINT8_MAX if none set.
+     */
+    uint8_t GetActiveBwp() const;
+
   protected:
     void DoTransmitBufferStatusReport(
         NrMacSapProvider::BufferStatusReportParameters params) override;
@@ -107,9 +125,14 @@ class BwpManagerUe : public NrSimpleUeComponentCarrierManager
 
   private:
     Ptr<BwpManagerAlgorithm> m_algorithm;
+    Time m_switchingDelay{Seconds(0)}; //!< Delay before applying forced switch
+    Time m_switchingUntil{Seconds(0)}; //!< End time of switching guard; 0 when inactive
     std::unordered_map<uint8_t, NrEpsBearer::Qci> m_lcToBearerMap; //!< Map from LCID to bearer ID
 
     std::unordered_map<uint32_t, uint32_t> m_outputLinks; //!< Mapping between BWP.
+
+    uint8_t m_activeBwpId{std::numeric_limits<uint8_t>::max()}; //!< Forced active BWP id
+    std::vector<NrMacSapProvider::BufferStatusReportParameters> m_pendingBsr; //!< queued during guard
 };
 
 } // namespace ns3

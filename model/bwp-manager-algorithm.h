@@ -57,6 +57,12 @@ class BwpManagerAlgorithm : public Object
      * @return the bwp id that the algorithm selects for the qci specified
      */
     virtual uint8_t GetBwpForEpsBearer(const NrEpsBearer::Qci& v) const = 0;
+    /**
+     * @brief Get the bandwidth part id for the Qci specified
+     * @param v the qci
+     * @return the bwp id that the algorithm selects for the qci specified
+     */
+    // virtual uint8_t GetBwpForEpsBearer() const = 0;
 };
 
 /**

@@ -9,6 +9,7 @@
 
 #include "ns3/log.h"
 #include "ns3/pointer.h"
+#include <limits>
 
 namespace ns3
 {
@@ -41,6 +42,11 @@ BwpManagerUe::GetTypeId()
                             .SetParent<NrSimpleUeComponentCarrierManager>()
                             .SetGroupName("nr")
                             .AddConstructor<BwpManagerUe>()
+                            // .AddAttribute("SwitchingDelay",
+                            //               "Delay between force command and applying the new UE BWP.",
+                            //               TimeValue(Seconds(0)),
+                            //               MakeTimeAccessor(&BwpManagerUe::m_switchingDelay),
+                            //               MakeTimeChecker())
                             .AddAttribute("BwpManagerAlgorithm",
                                           "The algorithm pointer",
                                           PointerValue(),
@@ -50,12 +56,21 @@ BwpManagerUe::GetTypeId()
 }
 
 void
+BwpManagerUe::SetAttributeSwitchingDelay(Time t)
+{
+    m_switchingDelay = t;
+}
+
+void
 BwpManagerUe::DoTransmitBufferStatusReport(NrMacSapProvider::BufferStatusReportParameters params)
 {
     NS_LOG_FUNCTION(this);
-    NS_ASSERT(m_algorithm != nullptr);
-
-    uint8_t bwpIndex = m_algorithm->GetBwpForEpsBearer(m_lcToBearerMap.at(params.lcid));
+    if (m_switchingUntil != Seconds(0) && Simulator::Now() < m_switchingUntil)
+    {
+        return;
+    }
+    // Route everything to the currently forced/active BWP. If none set yet, default to BWP 0.
+    uint8_t bwpIndex = (m_activeBwpId == std::numeric_limits<uint8_t>::max()) ? 0 : m_activeBwpId;
 
     NS_LOG_DEBUG("BSR of size " << params.txQueueSize
                                 << " from RLC for LCID = " << static_cast<uint32_t>(params.lcid)
@@ -147,6 +162,31 @@ Ptr<const BwpManagerAlgorithm>
 BwpManagerUe::GetAlgorithm() const
 {
     return m_algorithm;
+}
+
+void
+BwpManagerUe::ForceActiveBwp(uint8_t bwpId)
+{
+    NS_LOG_UNCOND("WE FORCED OUR UE TO USE " << +bwpId);
+    NS_LOG_FUNCTION(this << static_cast<uint32_t>(bwpId));
+    Time end = Simulator::Now() + m_switchingDelay;
+    m_switchingUntil = end;
+    Simulator::Schedule(m_switchingDelay, [this, bwpId]() {
+        m_activeBwpId = bwpId;
+        m_switchingUntil = Seconds(0);
+        // Flush queued BSRs
+        for (auto params : m_pendingBsr)
+        {
+            DoTransmitBufferStatusReport(params);
+        }
+        m_pendingBsr.clear();
+    });
+}
+
+uint8_t
+BwpManagerUe::GetActiveBwp() const
+{
+    return m_activeBwpId;
 }
 
 } // namespace ns3
