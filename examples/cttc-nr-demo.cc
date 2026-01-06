@@ -57,6 +57,7 @@ $ ./ns3 run "cttc-nr-demo --PrintHelp"
 #include "ns3/mobility-module.h"
 #include "ns3/nr-module.h"
 #include "ns3/point-to-point-module.h"
+#include "ns3/nr-bwp-switch-controller.h"
 
 /*
  * Use, always, the namespace ns3. All the NR classes are inside such namespace.
@@ -69,6 +70,27 @@ using namespace ns3;
  * Further information on how logging works can be found in the ns-3 documentation [3].
  */
 NS_LOG_COMPONENT_DEFINE("CttcNrDemo");
+
+static double g_controllerQueueThresholdBytes = 0.0;
+
+static NrBwpSwitchDecision
+SimpleBsrDrivenPolicy(const NrBwpSwitchState& state)
+{
+    NrBwpSwitchDecision decision;
+    decision.bsr = state.bsr;
+
+    uint32_t queued = state.bsr.txQueueSize + state.bsr.retxQueueSize;
+    if (state.switchingRemaining.IsZero() && queued > g_controllerQueueThresholdBytes)
+    {
+        decision.targetBwpId = 1; // Prefer wide BWP when backlog is high
+    }
+    else
+    {
+        decision.targetBwpId = 0; // Use default/narrow BWP otherwise
+    }
+
+    return decision;
+}
 
 int
 main(int argc, char* argv[])
@@ -83,6 +105,8 @@ main(int argc, char* argv[])
     uint16_t ueNumPergNb = 2;
     bool logging = false;
     bool doubleOperationalBand = true;
+    bool useBwpController = false;
+    double controllerQueueThresholdBytes = 15000.0;
 
     // Traffic parameters (that we will use inside this script):
     uint32_t udpPacketSizeULL = 100;
@@ -126,6 +150,12 @@ main(int argc, char* argv[])
                  "If true, simulate two operational bands with one CC for each band,"
                  "and each CC will have 1 BWP that spans the entire CC.",
                  doubleOperationalBand);
+    cmd.AddValue("useBwpController",
+                 "If true, enable demo BWP switch controller driven by BSR backlog",
+                 useBwpController);
+    cmd.AddValue("bwpControllerQueueThreshold",
+                 "If backlog exceeds this (bytes), controller switches UE to BWP1",
+                 controllerQueueThresholdBytes);
     cmd.AddValue("packetSizeUll",
                  "packet size in bytes to be used by ultra low latency traffic",
                  udpPacketSizeULL);
@@ -160,6 +190,7 @@ main(int argc, char* argv[])
 
     // Parse the command line
     cmd.Parse(argc, argv);
+    g_controllerQueueThresholdBytes = controllerQueueThresholdBytes;
 
     /*
      * Check if the frequency is in the allowed range.
@@ -412,6 +443,41 @@ main(int argc, char* argv[])
     randomStream += nrHelper->AssignStreams(gnbNetDev, randomStream);
     randomStream += nrHelper->AssignStreams(ueLowLatNetDev, randomStream);
     randomStream += nrHelper->AssignStreams(ueVoiceNetDev, randomStream);
+
+    Ptr<NrBwpSwitchController> bwpController;
+    if (useBwpController && doubleOperationalBand)
+    {
+        bwpController = CreateObject<NrBwpSwitchController>();
+        Ptr<NrGnbNetDevice> gnb0 = gnbNetDev.Get(0)->GetObject<NrGnbNetDevice>();
+        bwpController->SetGnbManager(gnb0->GetBwpManager());
+        bwpController->SetPolicy(MakeCallback(&SimpleBsrDrivenPolicy));
+        gnb0->GetBwpManager()->TraceConnectWithoutContext(
+            "BsrReport",
+            MakeCallback(&NrBwpSwitchController::HandleBsr, bwpController));
+
+        // Demo switch energy: 0->1 and 1->0 each cost 0.5 J.
+        auto& energyCfg = gnb0->GetBwpManager()->GetEnergyConfig();
+        energyCfg.SetSwitchEnergy(0, 1, 0.5);
+        energyCfg.SetSwitchEnergy(1, 0, 0.5);
+
+        auto addUes = [&](const NetDeviceContainer& c) {
+            for (auto dev : c)
+            {
+                Ptr<NrUeNetDevice> ue = dev->GetObject<NrUeNetDevice>();
+                uint16_t rnti = ue->GetRrc()->GetRnti();
+                if (rnti != 0)
+                {
+                    bwpController->AddUeManager(rnti, ue->GetBwpManager());
+                }
+            }
+        };
+        addUes(ueLowLatNetDev);
+        addUes(ueVoiceNetDev);
+    }
+    else if (useBwpController && !doubleOperationalBand)
+    {
+        NS_LOG_UNCOND("useBwpController requested but only one BWP configured; controller disabled.");
+    }
     /*
      * Case (iii): Go node for node and change the attributes we have to setup
      * per-node.

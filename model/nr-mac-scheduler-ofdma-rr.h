@@ -6,6 +6,7 @@
 
 #include "nr-mac-scheduler-ofdma.h"
 
+#include <unordered_map>
 #include <unordered_set>
 
 namespace ns3
@@ -122,6 +123,13 @@ class NrMacSchedulerOfdmaRR : public NrMacSchedulerOfdma
     {
     }
 
+  public:
+    /**
+     * @brief Set an external per-UE priority (lower value = higher priority).
+     * Used to bias the RR ordering.
+     */
+    void SetExternalPriority(uint16_t rnti, uint8_t priority);
+
   private:
     /**
      * Deque used to keep priority order of round-robin.
@@ -132,6 +140,7 @@ class NrMacSchedulerOfdmaRR : public NrMacSchedulerOfdma
      */
     mutable std::deque<uint16_t> m_dlRrRntiDeque;
     mutable std::unordered_set<uint16_t> m_dlRntiSet; ///< set of known RNTIs in RR deque
+    mutable std::unordered_map<uint16_t, uint8_t> m_externalPriority; ///< external priority hint
 };
 
 } // namespace ns3

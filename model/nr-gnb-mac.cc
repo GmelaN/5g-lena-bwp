@@ -18,6 +18,7 @@
 #include "nr-mac-pdu-info.h"
 #include "nr-mac-sched-sap.h"
 #include "nr-mac-scheduler.h"
+#include "nr-mac-scheduler-ofdma-rr.h"
 #include "nr-mac-short-bsr-ce.h"
 #include "nr-phy-mac-common.h"
 #include "nr-radio-bearer-tag.h"
@@ -970,7 +971,21 @@ void
 NrGnbMac::SetUeActive(uint16_t rnti, bool active)
 {
     m_ueActive[rnti] = active;
-    NS_LOG_UNCOND("MAC BWP " << +GetBwpId() << " UE " << rnti << " active=" << active);
+    // NS_LOG_UNCOND("MAC BWP " << +GetBwpId() << " UE " << rnti << " active=" << active);
+}
+
+void
+NrGnbMac::SetExternalUePriority(uint16_t rnti, uint8_t priority)
+{
+    // Best effort: only RR scheduler currently supports this hook.
+    if (m_macSchedSapProvider == nullptr)
+    {
+        return;
+    }
+    if (auto rr = dynamic_cast<NrMacSchedulerOfdmaRR*>(m_macSchedSapProvider))
+    {
+        rr->SetExternalPriority(rnti, priority);
+    }
 }
 
 NrMacSchedSapUser*

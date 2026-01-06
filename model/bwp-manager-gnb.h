@@ -9,8 +9,10 @@
 #include "nr-eps-bearer.h"
 #include "nr-no-op-component-carrier-manager.h"
 #include "nr-rlc.h"
+#include "nr-bwp-energy-config.h"
 
 #include <unordered_map>
+#include "ns3/traced-callback.h"
 #include "nr-gnb-mac.h"
 
 namespace ns3
@@ -109,14 +111,49 @@ class BwpManagerGnb : public NrRrComponentCarrierManager
     uint8_t GetForcedUeBwp(uint16_t rnti) const;
 
     /**
+     * @brief Return true if the UE is currently in a switching guard window.
+     */
+    bool IsSwitching(uint16_t rnti) const;
+
+    /**
+     * @brief Get remaining switching guard time for UE; 0 if not switching.
+     */
+    Time GetSwitchingRemaining(uint16_t rnti) const;
+
+    /**
      * @brief Set the MAC object map (ccId -> MAC) so we can toggle UE activation per BWP.
      */
     void SetMacObjects(const std::map<uint8_t, Ptr<NrGnbMac>>& macObjects);
 
     /**
+     * @brief Propagate an external UE priority hint to all MAC objects (if supported).
+     */
+    void SetUePriority(uint16_t rnti, uint8_t priority);
+
+    /**
      * @brief Set the delay applied before activating a forced BWP (guard for switch).
      */
     void SetAttributeSwitchingDelay(Time t);
+
+    /**
+     * @brief Access the switch energy configuration.
+     */
+    const NrBwpEnergyConfig& GetEnergyConfig() const;
+
+    /**
+     * @brief Mutable access to switch energy configuration.
+     */
+    NrBwpEnergyConfig& GetEnergyConfig();
+
+    /**
+     * @brief Trace switch energy when a forced switch completes.
+     *
+     * @param rnti UE
+     * @param fromBwp previous BWP (UINT8_MAX if none)
+     * @param toBwp new BWP
+     * @param energyJ energy cost in Joules
+     */
+    TracedCallback<uint16_t, uint8_t, uint8_t, double> m_switchEnergyTrace;
 
   protected:
     // void DoTransmitPdu(NrMacSapProvider::TransmitPduParameters params) override;
@@ -165,6 +202,7 @@ class BwpManagerGnb : public NrRrComponentCarrierManager
     uint8_t GetResourceType(NrMacSapProvider::BufferStatusReportParameters params);
 
     Ptr<BwpManagerAlgorithm> m_algorithm; //!< The BWP selection algorithm.
+    NrBwpEnergyConfig m_energyConfig;     //!< Static switch energy mapping
 
     std::unordered_map<uint32_t, uint32_t> m_outputLinks; //!< Mapping between BWP.
 
@@ -176,6 +214,12 @@ class BwpManagerGnb : public NrRrComponentCarrierManager
     std::unordered_map<uint16_t, std::vector<NrMacSapProvider::BufferStatusReportParameters>>
         m_pendingBsr; //!< Queued BSRs during switching
     std::unordered_map<uint16_t, std::vector<uint8_t>> m_pendingSr; //!< Queued SRs during switching
+
+    TracedCallback<uint16_t,
+                   uint8_t,
+                   uint8_t,
+                   const NrMacSapProvider::BufferStatusReportParameters&>
+        m_bsrTracedCallback; //!< Trace BSR routing and chosen BWP
 
     // ccId -> MAC object, used to toggle UE activation per BWP.
     std::map<uint8_t, Ptr<NrGnbMac>> m_macObjects;

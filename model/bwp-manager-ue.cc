@@ -167,7 +167,7 @@ BwpManagerUe::GetAlgorithm() const
 void
 BwpManagerUe::ForceActiveBwp(uint8_t bwpId)
 {
-    NS_LOG_UNCOND("WE FORCED OUR UE TO USE " << +bwpId);
+    // NS_LOG_UNCOND("WE FORCED OUR UE TO USE " << +bwpId);
     NS_LOG_FUNCTION(this << static_cast<uint32_t>(bwpId));
     Time end = Simulator::Now() + m_switchingDelay;
     m_switchingUntil = end;

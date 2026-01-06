@@ -230,7 +230,11 @@ NrMacSchedulerNs3::GetTypeId()
             .AddTraceSource("CsiFeedbackReceived",
                             "Received CSI feedback post-processed by the scheduler CQI management",
                             MakeTraceSourceAccessor(&NrMacSchedulerNs3::m_csiFeedbackReceived),
-                            "ns3::NrMacSchedulerNs3::CsiFeedbackReceived::TracedCallback");
+                            "ns3::NrMacSchedulerNs3::CsiFeedbackReceived::TracedCallback")
+            .AddTraceSource("DlBufferReport",
+                            "Downlink buffer report per LC (rnti, lcid, bytes, bwpId)",
+                            MakeTraceSourceAccessor(&NrMacSchedulerNs3::m_dlBufferReport),
+                            "ns3::TracedCallback<uint16_t, uint8_t, uint32_t, uint16_t>");
 
     return tid;
 }
@@ -811,6 +815,10 @@ NrMacSchedulerNs3::DoSchedDlRlcBufferReq(
                                                     params.m_rnti,
                                                     lcg.second->GetTotalSize());
             }
+            m_dlBufferReport(params.m_rnti,
+                             params.m_logicalChannelIdentity,
+                             lcg.second->GetTotalSize(),
+                             GetBwpId());
             return;
         }
     }

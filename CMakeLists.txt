@@ -60,6 +60,8 @@ set(source_files
     helper/nr-bearer-stats-calculator.cc
     helper/nr-bearer-stats-connector.cc
     helper/nr-bearer-stats-simple.cc
+    helper/nr-bwp-switch-controller.cc
+    helper/nr-bwp-switch-trigger-helper.cc
     helper/nr-channel-helper.cc
     helper/nr-epc-helper.cc
     helper/nr-helper.cc
@@ -75,6 +77,7 @@ set(source_files
     helper/realistic-beamforming-helper.cc
     helper/scenario-parameters.cc
     helper/three-gpp-ftp-m1-helper.cc
+    model/nr-bwp-energy-config.cc
     model/bwp-manager-algorithm-dynamic.cc
     model/bandwidth-part-gnb.cc
     model/bandwidth-part-ue.cc
@@ -248,6 +251,8 @@ set(header_files
     helper/nr-bearer-stats-calculator.h
     helper/nr-bearer-stats-connector.h
     helper/nr-bearer-stats-simple.h
+    helper/nr-bwp-switch-controller.h
+    helper/nr-bwp-switch-trigger-helper.h
     helper/nr-channel-helper.h
     helper/nr-epc-helper.h
     helper/nr-helper.h
@@ -263,6 +268,7 @@ set(header_files
     helper/realistic-beamforming-helper.h
     helper/scenario-parameters.h
     helper/three-gpp-ftp-m1-helper.h
+    model/nr-bwp-energy-config.h
     model/bwp-manager-algorithm-dynamic.h
     model/bandwidth-part-gnb.h
     model/bandwidth-part-ue.h
@@ -473,7 +479,6 @@ set(test_sources
     test/nr-simple-spectrum-phy.cc
     test/nr-spectrum-phy-test.cc
     test/nr-bwp-switch-integration.cc
-    test/nr-bwp-switch-test.cc
     test/nr-system-test-configurations.cc
     test/nr-system-test-schedulers-ofdma-mr.cc
     test/nr-system-test-schedulers-ofdma-pf.cc

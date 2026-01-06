@@ -997,6 +997,8 @@ class NrMacSchedulerNs3 : public NrMacScheduler
 
     TracedCallback<uint16_t, uint16_t, const std::shared_ptr<NrMacSchedulerUeInfo>&>
         m_csiFeedbackReceived; //!< Traced callback to access CSI feedback
+
+    TracedCallback<uint16_t, uint8_t, uint32_t, uint16_t> m_dlBufferReport; //!< rnti, lcid, bytes, bwpId
 };
 
 } // namespace ns3

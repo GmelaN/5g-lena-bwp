@@ -93,6 +93,11 @@ class NrGnbMac : public Object
     void SetUeActive(uint16_t rnti, bool active);
 
     /**
+     * @brief Set an external UE priority hint (best-effort; only applied if scheduler supports it).
+     */
+    void SetExternalUePriority(uint16_t rnti, uint8_t priority);
+
+    /**
      * @brief Sets the number of HARQ processes
      * @param numHarqProcess the maximum number of harq processes
      */

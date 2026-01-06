@@ -7,6 +7,7 @@
 #include "nr-mac-scheduler-ue-info-rr.h"
 
 #include "ns3/log.h"
+#include <limits>
 
 namespace ns3
 {
@@ -86,6 +87,22 @@ NrMacSchedulerOfdmaRR::GetUeCompareDlFn() const
 {
     return [this](const NrMacSchedulerNs3::UePtrAndBufferReq& a,
                   const NrMacSchedulerNs3::UePtrAndBufferReq& b) {
+        auto getPrio = [this](uint16_t rnti) {
+            auto it = m_externalPriority.find(rnti);
+            if (it == m_externalPriority.end())
+            {
+                return std::numeric_limits<uint8_t>::max();
+            }
+            return it->second;
+        };
+        uint8_t prioA = getPrio(a.first->m_rnti);
+        uint8_t prioB = getPrio(b.first->m_rnti);
+
+        if (prioA != prioB)
+        {
+            return prioA < prioB; // lower value = higher priority
+        }
+
         for (const auto& c : {a, b})
         {
             if (m_dlRntiSet.find(c.first->m_rnti) == m_dlRntiSet.end())
@@ -110,6 +127,12 @@ std::function<bool(const NrMacSchedulerNs3::UePtrAndBufferReq& lhs,
 NrMacSchedulerOfdmaRR::GetUeCompareUlFn() const
 {
     return NrMacSchedulerUeInfoRR::CompareUeWeightsUl;
+}
+
+void
+NrMacSchedulerOfdmaRR::SetExternalPriority(uint16_t rnti, uint8_t priority)
+{
+    m_externalPriority[rnti] = priority;
 }
 
 } // namespace ns3

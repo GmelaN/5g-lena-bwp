@@ -27,6 +27,8 @@ BwpManagerGnb::BwpManagerGnb()
     : NrRrComponentCarrierManager()
 {
     NS_LOG_FUNCTION(this);
+    m_energyConfig.SetSwitchEnergy(0, 1, 0.0015);
+    m_energyConfig.SetSwitchEnergy(1, 0, 0.0015);
 }
 
 BwpManagerGnb::~BwpManagerGnb()
@@ -50,7 +52,16 @@ BwpManagerGnb::GetTypeId()
                                           "The algorithm pointer",
                                           PointerValue(),
                                           MakePointerAccessor(&BwpManagerGnb::m_algorithm),
-                                          MakePointerChecker<BwpManagerAlgorithm>());
+                                          MakePointerChecker<BwpManagerAlgorithm>())
+                            .AddTraceSource("BsrReport",
+                                            "Buffer status report routed through BWP manager with resolved BWP.",
+                                            MakeTraceSourceAccessor(&BwpManagerGnb::m_bsrTracedCallback),
+                                            "ns3::TracedCallback<uint16_t, uint8_t, uint8_t, "
+                                            "const ns3::NrMacSapProvider::BufferStatusReportParameters&>")
+                            .AddTraceSource("SwitchEnergy",
+                                            "Energy consumed when a BWP switch completes for a UE.",
+                                            MakeTraceSourceAccessor(&BwpManagerGnb::m_switchEnergyTrace),
+                                            "ns3::TracedCallback<uint16_t, uint8_t, uint8_t, double>");
     return tid;
 }
 
@@ -115,11 +126,16 @@ BwpManagerGnb::GetBwpIndex(uint16_t rnti, uint8_t lcid)
         return forced->second;
     }
 
-    uint8_t qci = m_ueInfo[rnti].m_rlcLcInstantiated[lcid].qci;
+    NS_LOG_UNCOND("WARN: RETURNING DEFAULT BWP FOR UNKNOWN RNTI.");
 
-    // Force a conversion between the uint8_t type that comes from the LcInfo
-    // struct (yeah, using the NrEpsBearer::Qci type was too hard ...)
-    return m_algorithm->GetBwpForEpsBearer(static_cast<NrEpsBearer::Qci>(qci));
+    return 0;
+    // NS_ASSERT(false);
+
+    // uint8_t qci = m_ueInfo[rnti].m_rlcLcInstantiated[lcid].qci;
+
+    // // Force a conversion between the uint8_t type that comes from the LcInfo
+    // // struct (yeah, using the NrEpsBearer::Qci type was too hard ...)
+    // return m_algorithm->GetBwpForEpsBearer(static_cast<NrEpsBearer::Qci>(qci));
 }
 
 uint8_t
@@ -192,20 +208,27 @@ void
 BwpManagerGnb::ForceUeBwp(uint16_t rnti, uint8_t bwpId)
 {
     NS_LOG_FUNCTION(this << rnti << static_cast<uint32_t>(bwpId));
-    NS_LOG_UNCOND("ForceUeBwp rnti=" << rnti << " targetBwp=" << +bwpId);
+    // NS_LOG_UNCOND("ForceUeBwp rnti=" << rnti << " targetBwp=" << +bwpId);
     // Mark switching window: deactivate everywhere now, activate target after delay.
     Time end = Simulator::Now() + m_switchingDelay;
     m_switchingUntil[rnti] = end;
+    uint8_t fromBwp = GetForcedUeBwp(rnti);
+    uint8_t toBwp = bwpId;
     for (const auto& kv : m_macObjects)
     {
         kv.second->SetUeActive(rnti, false);
     }
-    Simulator::Schedule(m_switchingDelay, [=, this]() {
+    Simulator::Schedule(m_switchingDelay, [=, this, fromBwp, toBwp]() {
         m_forcedUeBwp[rnti] = bwpId;
         m_switchingUntil.erase(rnti);
         for (const auto& kv : m_macObjects)
         {
             kv.second->SetUeActive(rnti, kv.first == bwpId);
+        }
+        double energyJ = m_energyConfig.GetSwitchEnergy(fromBwp, toBwp);
+        if (energyJ > 0.0)
+        {
+            m_switchEnergyTrace(rnti, fromBwp, toBwp, energyJ);
         }
         FlushPending(rnti);
     });
@@ -222,10 +245,53 @@ BwpManagerGnb::GetForcedUeBwp(uint16_t rnti) const
     return it->second;
 }
 
+bool
+BwpManagerGnb::IsSwitching(uint16_t rnti) const
+{
+    auto it = m_switchingUntil.find(rnti);
+    return it != m_switchingUntil.end() && Simulator::Now() < it->second;
+}
+
+Time
+BwpManagerGnb::GetSwitchingRemaining(uint16_t rnti) const
+{
+    auto it = m_switchingUntil.find(rnti);
+    if (it == m_switchingUntil.end())
+    {
+        return Seconds(0);
+    }
+    if (Simulator::Now() >= it->second)
+    {
+        return Seconds(0);
+    }
+    return it->second - Simulator::Now();
+}
+
 void
 BwpManagerGnb::SetMacObjects(const std::map<uint8_t, Ptr<NrGnbMac>>& macObjects)
 {
     m_macObjects = macObjects;
+}
+
+void
+BwpManagerGnb::SetUePriority(uint16_t rnti, uint8_t priority)
+{
+    for (const auto& kv : m_macObjects)
+    {
+        kv.second->SetExternalUePriority(rnti, priority);
+    }
+}
+
+const NrBwpEnergyConfig&
+BwpManagerGnb::GetEnergyConfig() const
+{
+    return m_energyConfig;
+}
+
+NrBwpEnergyConfig&
+BwpManagerGnb::GetEnergyConfig()
+{
+    return m_energyConfig;
 }
 
 void
@@ -267,6 +333,7 @@ BwpManagerGnb::DoTransmitBufferStatusReport(NrMacSapProvider::BufferStatusReport
     }
 
     uint8_t bwpIndex = GetBwpIndex(params.rnti, params.lcid);
+    m_bsrTracedCallback(params.rnti, params.lcid, bwpIndex, params);
 
     if (m_macSapProvidersMap.find(bwpIndex) != m_macSapProvidersMap.end())
     {
