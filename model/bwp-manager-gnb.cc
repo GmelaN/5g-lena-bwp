@@ -10,6 +10,7 @@
 #include "ns3/log.h"
 #include "ns3/object-map.h"
 #include "ns3/pointer.h"
+#include "ns3/trace-source-accessor.h"
 #include "ns3/uinteger.h"
 
 #include <limits>
@@ -27,6 +28,7 @@ BwpManagerGnb::BwpManagerGnb()
     : NrRrComponentCarrierManager()
 {
     NS_LOG_FUNCTION(this);
+    NS_LOG_UNCOND("SWITCHING DELAY: " << this->m_switchingDelay.As(Time::MS) << " MS");
 }
 
 BwpManagerGnb::~BwpManagerGnb()
@@ -43,14 +45,18 @@ BwpManagerGnb::GetTypeId()
                             .AddConstructor<BwpManagerGnb>()
                             .AddAttribute("SwitchingDelay",
                                           "Delay between receiving a force command and activating the new BWP.",
-                                          TimeValue(Seconds(0)),
+                                          TimeValue(Seconds(20)),
                                           MakeTimeAccessor(&BwpManagerGnb::m_switchingDelay),
                                           MakeTimeChecker())
                             .AddAttribute("BwpManagerAlgorithm",
                                           "The algorithm pointer",
                                           PointerValue(),
                                           MakePointerAccessor(&BwpManagerGnb::m_algorithm),
-                                          MakePointerChecker<BwpManagerAlgorithm>());
+                                          MakePointerChecker<BwpManagerAlgorithm>())
+                            .AddTraceSource("DlBsrReport",
+                                            "Downlink BSR report delivered to the BWP manager.",
+                                            MakeTraceSourceAccessor(&BwpManagerGnb::m_dlBsrReport),
+                                            "ns3::BwpManagerGnb::DlBsrReportTracedCallback");
     return tid;
 }
 
@@ -192,7 +198,7 @@ void
 BwpManagerGnb::ForceUeBwp(uint16_t rnti, uint8_t bwpId)
 {
     NS_LOG_FUNCTION(this << rnti << static_cast<uint32_t>(bwpId));
-    NS_LOG_UNCOND("ForceUeBwp rnti=" << rnti << " targetBwp=" << +bwpId);
+    NS_LOG_INFO("ForceUeBwp rnti=" << rnti << " targetBwp=" << +bwpId);
     // Mark switching window: deactivate everywhere now, activate target after delay.
     Time end = Simulator::Now() + m_switchingDelay;
     m_switchingUntil[rnti] = end;
@@ -258,6 +264,12 @@ void
 BwpManagerGnb::DoTransmitBufferStatusReport(NrMacSapProvider::BufferStatusReportParameters params)
 {
     NS_LOG_FUNCTION(this);
+
+    m_dlBsrReport(params.rnti,
+                  params.lcid,
+                  params.txQueueSize,
+                  params.retxQueueSize,
+                  params.statusPduSize);
 
     auto swIt = m_switchingUntil.find(params.rnti);
     if (swIt != m_switchingUntil.end() && Simulator::Now() < swIt->second)

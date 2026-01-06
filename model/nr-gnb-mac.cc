@@ -970,7 +970,7 @@ void
 NrGnbMac::SetUeActive(uint16_t rnti, bool active)
 {
     m_ueActive[rnti] = active;
-    NS_LOG_UNCOND("MAC BWP " << +GetBwpId() << " UE " << rnti << " active=" << active);
+    NS_LOG_INFO("MAC BWP " << +GetBwpId() << " UE " << rnti << " active=" << active);
 }
 
 NrMacSchedSapUser*

@@ -10,6 +10,8 @@
 #include "nr-no-op-component-carrier-manager.h"
 #include "nr-rlc.h"
 
+#include "ns3/traced-callback.h"
+
 #include <unordered_map>
 #include "nr-gnb-mac.h"
 
@@ -27,6 +29,21 @@ class NrControlMessage;
 class BwpManagerGnb : public NrRrComponentCarrierManager
 {
   public:
+    /**
+     * TracedCallback signature for downlink BSR reporting.
+     *
+     * @param rnti UE RNTI
+     * @param lcid Logical channel ID
+     * @param txQueueSize RLC transmission queue size in bytes
+     * @param retxQueueSize RLC retransmission queue size in bytes
+     * @param statusPduSize RLC status PDU size in bytes
+     */
+    typedef void (*DlBsrReportTracedCallback)(uint16_t rnti,
+                                              uint8_t lcid,
+                                              uint32_t txQueueSize,
+                                              uint32_t retxQueueSize,
+                                              uint16_t statusPduSize);
+
     BwpManagerGnb();
     ~BwpManagerGnb() override;
     static TypeId GetTypeId();
@@ -180,9 +197,12 @@ class BwpManagerGnb : public NrRrComponentCarrierManager
     // ccId -> MAC object, used to toggle UE activation per BWP.
     std::map<uint8_t, Ptr<NrGnbMac>> m_macObjects;
 
-    Time m_switchingDelay{Seconds(0)}; //!< Delay before applying a forced BWP switch
+    Time m_switchingDelay{MilliSeconds(20)}; //!< Delay before applying a forced BWP switch
 
     void FlushPending(uint16_t rnti);
+
+    TracedCallback<uint16_t, uint8_t, uint32_t, uint32_t, uint16_t>
+        m_dlBsrReport; //!< DL BSR: rnti, lcid, txQ, retxQ, statusPdu
 };
 
 } // end of namespace ns3
