@@ -54,6 +54,7 @@ class NrBwpSwitchTriggerHelper : public Object
     void NotifyDlQueue(uint16_t rnti, uint8_t lcid, uint8_t currentBwp, uint8_t priority, uint32_t queueBytes);
     void RecordEnqueue(uint16_t rnti, uint8_t lcid);
     void RecordAck(uint16_t rnti, uint8_t lcid);
+    void RecordAoiSample(uint16_t rnti, uint8_t lcid, Time delay);
 
   private:
     static constexpr uint8_t m_dwellBins = 11; // 0..10 (100 ms with 10 ms bins)
@@ -113,18 +114,20 @@ class NrBwpSwitchTriggerHelper : public Object
     void ScheduleEvaluation();
     void EvaluateWindow();
     uint8_t QuantizeQueue(double avgQueue) const;
-    uint8_t QuantizeAoI(double avgAoI) const;
+    uint8_t QuantizeAoI(double avgAoIMs) const;
     uint8_t QuantizeDwell(double dwellSeconds) const;
     uint32_t ComputeStateIndex(uint8_t queueBin, uint8_t aoiBin, uint8_t dwellBin, uint8_t bwp, uint8_t pri) const;
     NrBwpSwitchDecision RunInternalPolicy(uint16_t rnti,
                                           const NrBwpSwitchState& state,
                                           uint32_t stateIdx,
-                                          PerUeContext& ctx);
+                                          PerUeContext& ctx,
+                                          bool isSwitching);
     NrBwpSwitchDecision RunWindowDetectPolicy(uint16_t rnti,
                                               const NrBwpSwitchState& state,
                                               PerUeContext& ctx,
                                               Time dt,
                                               bool isSwitching);
+    void HandleTxEnergy(uint16_t rnti, uint8_t bwpId, uint32_t bytes, double energyJ);
     std::vector<std::pair<double, double>>& GetQTableForUe(uint16_t rnti);
     std::vector<uint32_t>& GetVisitTableForUe(uint16_t rnti);
     uint32_t& GetEvalCountForUe(uint16_t rnti);
@@ -143,6 +146,7 @@ class NrBwpSwitchTriggerHelper : public Object
     std::unordered_map<uint16_t, std::vector<uint32_t>> m_visitTablesByUe; // state-action visit counts
     std::unordered_map<uint16_t, uint32_t> m_evalCountsByUe; // per-UE evaluation windows processed
     Ptr<UniformRandomVariable> m_rng;
+    bool m_txEnergyConnected{false};
 
     EventId m_evalEvent;
 
@@ -158,14 +162,14 @@ class NrBwpSwitchTriggerHelper : public Object
     double m_prefAoI{0.5};
     double m_staticPowerBwp0Mw{100.0};
     double m_staticPowerBwp1Mw{200.0};
-    double m_alpha{0.1};
-    double m_alphaMin{0.01};
+    double m_alpha{0.15};
+    double m_alphaMin{0.02};
     double m_gamma{0.95};
-    double m_epsilon{0.1};
-    double m_epsilonMin{0.05};
-    double m_epsilonDecay{1e-4};
+    double m_epsilon{0.15};
+    double m_epsilonMin{0.02};
+    double m_epsilonDecay{5e-3};
     double m_rewardEnergyNorm{0.01};
-    double m_rewardAoiNorm{0.01};
+    double m_rewardAoiNorm{10.0};
     uint8_t m_evalGroupModulo{1};
     uint64_t m_evalRound{0};
     InternalPolicyMode m_internalPolicyMode{POLICY_Q_LEARNING};

@@ -200,9 +200,15 @@ class BwpManagerGnb : public NrRrComponentCarrierManager
      * @returns The resource type
      */
     uint8_t GetResourceType(NrMacSapProvider::BufferStatusReportParameters params);
+    double ComputeTxEnergyJ(uint8_t bwpId, uint32_t bytes) const;
 
     Ptr<BwpManagerAlgorithm> m_algorithm; //!< The BWP selection algorithm.
     NrBwpEnergyConfig m_energyConfig;     //!< Static switch energy mapping
+    double m_txPowerBwp0Mw{0.0};          //!< Tx power (mW) for BWP 0
+    double m_txPowerBwp1Mw{0.0};          //!< Tx power (mW) for BWP 1
+    double m_txBandwidthBwp0Hz{0.0};      //!< Effective bandwidth (Hz) for BWP 0
+    double m_txBandwidthBwp1Hz{0.0};      //!< Effective bandwidth (Hz) for BWP 1
+    double m_txSpectralEfficiency{1.0};   //!< Assumed spectral efficiency (bit/s/Hz)
 
     std::unordered_map<uint32_t, uint32_t> m_outputLinks; //!< Mapping between BWP.
 
@@ -220,6 +226,7 @@ class BwpManagerGnb : public NrRrComponentCarrierManager
                    uint8_t,
                    const NrMacSapProvider::BufferStatusReportParameters&>
         m_bsrTracedCallback; //!< Trace BSR routing and chosen BWP
+    TracedCallback<uint16_t, uint8_t, uint32_t, double> m_txEnergyTrace; //!< Tx energy per PDU
 
     // ccId -> MAC object, used to toggle UE activation per BWP.
     std::map<uint8_t, Ptr<NrGnbMac>> m_macObjects;

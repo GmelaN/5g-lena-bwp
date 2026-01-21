@@ -7,6 +7,7 @@
 #include "bwp-manager-algorithm.h"
 #include "nr-control-messages.h"
 
+#include "ns3/double.h"
 #include "ns3/log.h"
 #include "ns3/object-map.h"
 #include "ns3/pointer.h"
@@ -53,11 +54,40 @@ BwpManagerGnb::GetTypeId()
                                           PointerValue(),
                                           MakePointerAccessor(&BwpManagerGnb::m_algorithm),
                                           MakePointerChecker<BwpManagerAlgorithm>())
+                            .AddAttribute("TxPowerBwp0Mw",
+                                          "Tx power (mW) assumed for BWP 0.",
+                                          DoubleValue(0.0),
+                                          MakeDoubleAccessor(&BwpManagerGnb::m_txPowerBwp0Mw),
+                                          MakeDoubleChecker<double>(0.0))
+                            .AddAttribute("TxPowerBwp1Mw",
+                                          "Tx power (mW) assumed for BWP 1.",
+                                          DoubleValue(0.0),
+                                          MakeDoubleAccessor(&BwpManagerGnb::m_txPowerBwp1Mw),
+                                          MakeDoubleChecker<double>(0.0))
+                            .AddAttribute("TxBandwidthBwp0Hz",
+                                          "Effective bandwidth (Hz) for BWP 0.",
+                                          DoubleValue(0.0),
+                                          MakeDoubleAccessor(&BwpManagerGnb::m_txBandwidthBwp0Hz),
+                                          MakeDoubleChecker<double>(0.0))
+                            .AddAttribute("TxBandwidthBwp1Hz",
+                                          "Effective bandwidth (Hz) for BWP 1.",
+                                          DoubleValue(0.0),
+                                          MakeDoubleAccessor(&BwpManagerGnb::m_txBandwidthBwp1Hz),
+                                          MakeDoubleChecker<double>(0.0))
+                            .AddAttribute("TxSpectralEfficiency",
+                                          "Assumed spectral efficiency (bit/s/Hz) for Tx energy.",
+                                          DoubleValue(1.0),
+                                          MakeDoubleAccessor(&BwpManagerGnb::m_txSpectralEfficiency),
+                                          MakeDoubleChecker<double>(1e-9))
                             .AddTraceSource("BsrReport",
                                             "Buffer status report routed through BWP manager with resolved BWP.",
                                             MakeTraceSourceAccessor(&BwpManagerGnb::m_bsrTracedCallback),
                                             "ns3::TracedCallback<uint16_t, uint8_t, uint8_t, "
                                             "const ns3::NrMacSapProvider::BufferStatusReportParameters&>")
+                            .AddTraceSource("TxEnergy",
+                                            "Energy consumed per DL PDU transmission (J).",
+                                            MakeTraceSourceAccessor(&BwpManagerGnb::m_txEnergyTrace),
+                                            "ns3::TracedCallback<uint16_t, uint8_t, uint32_t, double>")
                             .AddTraceSource("SwitchEnergy",
                                             "Energy consumed when a BWP switch completes for a UE.",
                                             MakeTraceSourceAccessor(&BwpManagerGnb::m_switchEnergyTrace),
@@ -87,6 +117,38 @@ BwpManagerGnb::GetResourceType(NrMacSapProvider::BufferStatusReportParameters pa
                       m_ueInfo.at(params.rnti).m_rlcLcInstantiated.end(),
                   "Trying to check the QoS of unknown logical channel");
     return (m_ueInfo[params.rnti].m_rlcLcInstantiated[params.lcid]).resourceType;
+}
+
+double
+BwpManagerGnb::ComputeTxEnergyJ(uint8_t bwpId, uint32_t bytes) const
+{
+    // NS_ASSERT_MSG(false, "\\phi 한번 봐야 함");
+    if (bytes == 0 || m_txSpectralEfficiency <= 0.0)
+    {
+        return 0.0;
+    }
+
+    double powerMw = 0.0;
+    double bandwidthHz = 0.0;
+    if (bwpId == 0)
+    {
+        powerMw = m_txPowerBwp0Mw;
+        bandwidthHz = m_txBandwidthBwp0Hz;
+    }
+    else if (bwpId == 1)
+    {
+        powerMw = m_txPowerBwp1Mw;
+        bandwidthHz = m_txBandwidthBwp1Hz;
+    }
+
+    if (powerMw <= 0.0 || bandwidthHz <= 0.0)
+    {
+        return 0.0;
+    }
+
+    double bits = static_cast<double>(bytes) * 8.0;
+    double airTimeSeconds = bits / (bandwidthHz * m_txSpectralEfficiency);
+    return powerMw * 1e-3 * airTimeSeconds;
 }
 
 std::vector<NrCcmRrcSapProvider::LcsConfig>
@@ -208,7 +270,7 @@ void
 BwpManagerGnb::ForceUeBwp(uint16_t rnti, uint8_t bwpId)
 {
     NS_LOG_FUNCTION(this << rnti << static_cast<uint32_t>(bwpId));
-    // NS_LOG_UNCOND("ForceUeBwp rnti=" << rnti << " targetBwp=" << +bwpId);
+    NS_LOG_INFO("ForceUeBwp rnti=" << rnti << " targetBwp=" << +bwpId);
     // Mark switching window: deactivate everywhere now, activate target after delay.
     Time end = Simulator::Now() + m_switchingDelay;
     m_switchingUntil[rnti] = end;
@@ -311,6 +373,16 @@ BwpManagerGnb::DoTransmitPdu(NrMacSapProvider::TransmitPduParameters params)
     if (forcedIt != m_forcedUeBwp.end())
     {
         params.componentCarrierId = forcedIt->second;
+    }
+
+    if (params.pdu)
+    {
+        uint32_t bytes = params.pdu->GetSize();
+        double energyJ = ComputeTxEnergyJ(params.componentCarrierId, bytes);
+        if (energyJ > 0.0)
+        {
+            m_txEnergyTrace(params.rnti, params.componentCarrierId, bytes, energyJ);
+        }
     }
 
     auto it = m_macSapProvidersMap.find(params.componentCarrierId);

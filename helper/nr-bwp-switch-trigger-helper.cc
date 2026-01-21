@@ -45,12 +45,12 @@ NrBwpSwitchTriggerHelper::GetTypeId()
                           MakeUintegerChecker<uint32_t>())
             .AddAttribute("AoIThreshold1",
                           "Lower AoI threshold for discretization.",
-                          TimeValue(MilliSeconds(0.5)),
+                          TimeValue(MilliSeconds(1)),
                           MakeTimeAccessor(&NrBwpSwitchTriggerHelper::m_aoiThreshold1),
                           MakeTimeChecker())
             .AddAttribute("AoIThreshold2",
                           "Upper AoI threshold for discretization.",
-                          TimeValue(MilliSeconds(2)),
+                          TimeValue(MilliSeconds(5)),
                           MakeTimeAccessor(&NrBwpSwitchTriggerHelper::m_aoiThreshold2),
                           MakeTimeChecker())
             .AddAttribute("EnergyPerByteJ",
@@ -60,12 +60,12 @@ NrBwpSwitchTriggerHelper::GetTypeId()
                           MakeDoubleChecker<double>())
             .AddAttribute("PreferenceEnergy",
                           "Preference weight for energy in Pareto Q-learning scalarization.",
-                          DoubleValue(0.2),
+                          DoubleValue(0.3),
                           MakeDoubleAccessor(&NrBwpSwitchTriggerHelper::m_prefEnergy),
                           MakeDoubleChecker<double>())
             .AddAttribute("PreferenceAoI",
                           "Preference weight for AoI in Pareto Q-learning scalarization.",
-                          DoubleValue(0.8),
+                          DoubleValue(0.7),
                           MakeDoubleAccessor(&NrBwpSwitchTriggerHelper::m_prefAoI),
                           MakeDoubleChecker<double>())
             .AddAttribute("StaticPowerBwp0Mw",
@@ -95,17 +95,20 @@ NrBwpSwitchTriggerHelper::GetTypeId()
                           MakeDoubleChecker<double>(0.0, 1.0))
             .AddAttribute("Epsilon",
                           "Epsilon for epsilon-greedy action selection.",
-                          DoubleValue(0.3),
+                          DoubleValue(0.2),
+                        //   DoubleValue(1.0),
                           MakeDoubleAccessor(&NrBwpSwitchTriggerHelper::m_epsilon),
                           MakeDoubleChecker<double>(0.0, 1.0))
             .AddAttribute("EpsilonMin",
                           "Minimum epsilon after decay.",
-                          DoubleValue(0.05),
+                          DoubleValue(0.02),
+                            // DoubleValue(1.0),
                           MakeDoubleAccessor(&NrBwpSwitchTriggerHelper::m_epsilonMin),
                           MakeDoubleChecker<double>(0.0, 1.0))
             .AddAttribute("EpsilonDecay",
                           "Decay rate for epsilon; applied as exp(-decay * evalCount).",
-                          DoubleValue(1e-4),
+                          DoubleValue(5e-3),
+                        //   DoubleValue(0.0),
                           MakeDoubleAccessor(&NrBwpSwitchTriggerHelper::m_epsilonDecay),
                           MakeDoubleChecker<double>(0.0))
             .AddAttribute("RewardEnergyNorm",
@@ -114,8 +117,8 @@ NrBwpSwitchTriggerHelper::GetTypeId()
                           MakeDoubleAccessor(&NrBwpSwitchTriggerHelper::m_rewardEnergyNorm),
                           MakeDoubleChecker<double>(1e-9))
             .AddAttribute("RewardAoiNorm",
-                          "Normalization constant (s) applied to AoI reward.",
-                          DoubleValue(0.01),
+                          "Normalization constant (ms) applied to AoI reward.",
+                          DoubleValue(10.0),
                           MakeDoubleAccessor(&NrBwpSwitchTriggerHelper::m_rewardAoiNorm),
                           MakeDoubleChecker<double>(1e-9))
             .AddAttribute("EnableInternalPolicy",
@@ -126,19 +129,19 @@ NrBwpSwitchTriggerHelper::GetTypeId()
             .AddAttribute("InternalPolicyMode",
                           "Select internal policy when no external policy is set.",
                           EnumValue(POLICY_Q_LEARNING),
-                          MakeEnumAccessor(&NrBwpSwitchTriggerHelper::m_internalPolicyMode),
+                          MakeEnumAccessor<NrBwpSwitchTriggerHelper::InternalPolicyMode>(&NrBwpSwitchTriggerHelper::m_internalPolicyMode),
                           MakeEnumChecker(POLICY_Q_LEARNING,
                                           "Qlearning",
                                           POLICY_WINDOW_DETECT,
                                           "WindowDetect"))
             .AddAttribute("SwitchThresholdBytes",
                           "Queue threshold (tau) for window-based switching (bytes).",
-                          UintegerValue(0),
+                          UintegerValue(3000),
                           MakeUintegerAccessor(&NrBwpSwitchTriggerHelper::m_switchThresholdBytes),
                           MakeUintegerChecker<uint32_t>())
             .AddAttribute("ControlWindow",
                           "Periodic control window (T_C). Zero disables periodic decision.",
-                          TimeValue(Seconds(0)),
+                          TimeValue(MilliSeconds(50)),
                           MakeTimeAccessor(&NrBwpSwitchTriggerHelper::m_controlWindow),
                           MakeTimeChecker())
             .AddAttribute("DetectTime",
@@ -266,6 +269,13 @@ void
 NrBwpSwitchTriggerHelper::SetGnbManager(const Ptr<BwpManagerGnb>& gnbManager)
 {
     m_gnbManager = gnbManager;
+    if (m_gnbManager != nullptr && !m_txEnergyConnected)
+    {
+        m_gnbManager->TraceConnectWithoutContext(
+            "TxEnergy",
+            MakeCallback(&NrBwpSwitchTriggerHelper::HandleTxEnergy, this));
+        m_txEnergyConnected = true;
+    }
 }
 
 void
@@ -300,7 +310,7 @@ NrBwpSwitchTriggerHelper::NotifyBsr(
     ctx.queueSumBytes += params.txQueueSize;
     ctx.queueSamples++;
 
-    ctx.energySumJ += params.txQueueSize; // * m_energyPerByteJ;
+    ctx.energySumJ += static_cast<double>(params.txQueueSize) * m_energyPerByteJ;
 
     if (!m_evalEvent.IsPending())
     {
@@ -384,14 +394,37 @@ NrBwpSwitchTriggerHelper::RecordAck(uint16_t rnti, uint8_t lcid)
         NS_LOG_INFO("RecordAck rnti=" << rnti << " lcid=" << +lcid << " no_pending");
         return;
     }
-    Time aoi = Simulator::Now() - pendingIt->second;
+    Time issueTime = pendingIt->second;
+    Time aoi = Simulator::Now() - issueTime;
     ctx.aoiSumMs += aoi.GetMilliSeconds();
     ctx.aoiSamples++;
     ctx.pending.erase(pendingIt);
+    NS_LOG_UNCOND("ISSUE TIME: " << issueTime.As(Time::MS)
+                                << ", ARRIVAL TIME: " << Simulator::Now().As(Time::MS)
+                                << ", AoI: " << aoi.As(Time::MS));
     NS_LOG_INFO("RecordAck rnti=" << rnti << " lcid=" << +lcid << " aoi=" << aoi.GetMilliSeconds()
                                   << "ms samples=" << ctx.aoiSamples);
-    NS_LOG_UNCOND("RecordAck rnti=" << rnti << " lcid=" << +lcid << " aoi=" << aoi.GetMilliSeconds()
-                                << "ms samples=" << ctx.aoiSamples);
+}
+
+void
+NrBwpSwitchTriggerHelper::RecordAoiSample(uint16_t rnti, uint8_t lcid, Time delay)
+{
+    (void)lcid;
+    auto& ctx = GetOrCreateCtx(rnti);
+    ctx.aoiSumMs += delay.GetMilliSeconds();
+    ctx.aoiSamples++;
+}
+
+void
+NrBwpSwitchTriggerHelper::HandleTxEnergy(uint16_t rnti,
+                                         uint8_t bwpId,
+                                         uint32_t bytes,
+                                         double energyJ)
+{
+    (void)bwpId;
+    (void)bytes;
+    auto& ctx = GetOrCreateCtx(rnti);
+    ctx.energySumJ += energyJ;
 }
 // 100 ms = 0.1 s
 void
@@ -424,9 +457,9 @@ NrBwpSwitchTriggerHelper::QuantizeQueue(double avgQueue) const
 }
 
 uint8_t
-NrBwpSwitchTriggerHelper::QuantizeAoI(double avgAoI) const
+NrBwpSwitchTriggerHelper::QuantizeAoI(double avgAoIMs) const
 {
-    Time avg = MilliSeconds(avgAoI);
+    Time avg = MilliSeconds(avgAoIMs);
     if (avg <= m_aoiThreshold1)
     {
         return 0;
@@ -484,7 +517,8 @@ NrBwpSwitchDecision
 NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
                                             const NrBwpSwitchState& state,
                                             uint32_t stateIdx,
-                                            PerUeContext& ctx)
+                                            PerUeContext& ctx,
+                                            bool isSwitching)
 {
     constexpr uint32_t kLogEvery = 30; // avoid log flood
     auto& qTable = GetQTableForUe(rnti);
@@ -503,7 +537,7 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
         double alpha =
             std::max(m_alphaMin, m_alpha / std::sqrt(static_cast<double>(std::max<uint32_t>(1, visits))));
         double rewardEnergy = -(ctx.energySumJ + ctx.pendingSwitchEnergy) / energyNorm;
-        double rewardAoI = -(state.avgAoISeconds) / aoiNorm;
+        double rewardAoI = -(state.avgAoIMs) / aoiNorm;
 
         // Greedy bootstrap from next state using preference scalarization.
         double bestScalar = -1e30;
@@ -524,6 +558,15 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
         qPrev.second += alpha * (rewardAoI + m_gamma * bestQ.second - qPrev.second);
         ctx.pendingSwitchEnergy = 0.0;
         
+    }
+
+    if (isSwitching)
+    {
+        NrBwpSwitchDecision decision;
+        decision.bsr = state.bsr;
+        ctx.hasPrev = false;
+        ctx.pendingSwitchEnergy = 0.0;
+        return decision;
     }
 
     // Epsilon-greedy selection on scalarized Q values.
@@ -569,15 +612,14 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
                                    << " eps=" << epsilon
                                    << " alpha=" << ((ctx.hasPrev) ? std::max(m_alphaMin, m_alpha / std::sqrt(static_cast<double>(std::max<uint32_t>(1, visitTable[ctx.prevStateIdx * m_actionCount + ctx.prevActionIdx])))) : m_alpha)
                                    << " rE=" << ((ctx.hasPrev) ? (-(ctx.energySumJ + ctx.pendingSwitchEnergy) / energyNorm) : 0.0)
-                                   << " rA=" << ((ctx.hasPrev) ? (-(state.avgAoISeconds) / aoiNorm) : 0.0)
+                                   << " rA=" << ((ctx.hasPrev) ? (-(state.avgAoIMs) / aoiNorm) : 0.0)
                                    << " scalarQ=" << scalarPrev
                                    << " bestScalar=" << (ctx.hasPrev ? m_prefEnergy * qTable[stateIdx * m_actionCount + chosen].first + m_prefAoI * qTable[stateIdx * m_actionCount + chosen].second : 0.0));
     }
 
-
     if((++count) % 50 == 0)
     {
-        NS_LOG_UNCOND(Simulator::Now().As(Time::S) << " RunInternalPolicy rnti=" << rnti << " stateIdx=" << stateIdx << " bwp=" << +state.currentBwpId
+        NS_LOG_INFO(Simulator::Now().As(Time::S) << " RunInternalPolicy rnti=" << rnti << " stateIdx=" << stateIdx << " bwp=" << +state.currentBwpId
                                           << " pri=" << +state.priority << " queueBin=" << +state.queueBin
                                           << " aoiBin=" << +state.aoiBin << " dwellBin=" << +state.dwellBin
                                           << " action=" << +chosen << " tgtBwp=" << +decision.targetBwpId
@@ -767,16 +809,16 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
         uint16_t rnti = kv.first;
         auto& ctx = kv.second;
 
-        uint8_t groupMod = std::max<uint8_t>(1, m_evalGroupModulo);
-        if (groupMod > 1)
-        {
-            uint8_t group = static_cast<uint8_t>(rnti % groupMod);
-            uint8_t active = static_cast<uint8_t>(m_evalRound % groupMod);
-            if (group != active)
-            {
-                continue;
-            }
-        }
+        // uint8_t groupMod = std::max<uint8_t>(1, m_evalGroupModulo);
+        // if (groupMod > 1)
+        // {
+        //     uint8_t group = static_cast<uint8_t>(rnti % groupMod);
+        //     uint8_t active = static_cast<uint8_t>(m_evalRound % groupMod);
+        //     if (group != active)
+        //     {
+        //         continue;
+        //     }
+        // }
 
         ctx.currentBwp = m_gnbManager->GetForcedUeBwp(rnti);
 
@@ -800,15 +842,13 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
         Time dt = Seconds(std::max(0.0, dtSeconds));
 
         double avgQueue = (ctx.queueSamples > 0) ? ctx.queueSumBytes / static_cast<double>(ctx.queueSamples) : 0.0;
-        double avgAoI = (ctx.aoiSamples > 0) ? ctx.aoiSumMs / static_cast<double>(ctx.aoiSamples) : 0.0;
-        // NS_LOG_INFO("Eval rnti=" << rnti << " avgQueue=" << avgQueue << "B avgAoI=" << avgAoI
-                                //  << "s samplesAoi=" << ctx.aoiSamples << " samplesQ=" << ctx.queueSamples);
-        NS_LOG_UNCOND("Eval rnti=" << rnti << " avgQueue=" << avgQueue << "B avgAoI=" << avgAoI
-                                 << "ms samplesAoi=" << ctx.aoiSamples << " samplesQ=" << ctx.queueSamples);
+        double avgAoIMs = (ctx.aoiSamples > 0) ? ctx.aoiSumMs / static_cast<double>(ctx.aoiSamples) : 0.0;
+        NS_LOG_UNCOND(Simulator::Now().As(Time::MS) << "\tEval rnti=" << rnti << "\tavgQueue=" << avgQueue << "B\tavgAoI=" << avgAoIMs
+                                 << "ms\tsamplesAoi=" << ctx.aoiSamples << "\tsamplesQ=" << ctx.queueSamples);
 
 
         uint8_t queueBin = QuantizeQueue(avgQueue);
-        uint8_t aoiBin = QuantizeAoI(avgAoI);
+        uint8_t aoiBin = QuantizeAoI(avgAoIMs);
         double dwellSeconds =
             (ctx.lastSwitchTimeSeconds > 0.0) ? (now - ctx.lastSwitchTimeSeconds) : 0.0;
         uint8_t dwellBin = QuantizeDwell(dwellSeconds);
@@ -819,7 +859,7 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
         state.switchingRemaining =
             (m_gnbManager != nullptr) ? m_gnbManager->GetSwitchingRemaining(rnti) : Seconds(0);
         state.avgQueueSizeBytes = avgQueue;
-        state.avgAoISeconds = avgAoI;
+        state.avgAoIMs = avgAoIMs;
         state.priority = ctx.priority;
         state.queueBin = queueBin;
         state.aoiBin = aoiBin;
@@ -839,11 +879,13 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
         {
             if (m_internalPolicyMode == POLICY_WINDOW_DETECT)
             {
+                // NS_LOG_UNCOND("RUNNING WINDOW DETECTION");
                 decision = RunWindowDetectPolicy(rnti, state, ctx, dt, isSwitching);
             }
             else
             {
-                decision = RunInternalPolicy(rnti, state, stateIdx, ctx);
+                // NS_LOG_UNCOND("RUNNING Q-LEARNING");
+                decision = RunInternalPolicy(rnti, state, stateIdx, ctx, isSwitching);
             }
         }
 
