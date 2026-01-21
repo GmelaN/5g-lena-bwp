@@ -42,7 +42,7 @@ struct NrBwpSwitchState
     NrMacSapProvider::BufferStatusReportParameters bsr{}; //!< Raw BSR values
     Time switchingRemaining{Seconds(0)};                  //!< Guard window left, if any
     double avgQueueSizeBytes{0.0};                        //!< Averaged over the evaluation window
-    double avgAoISeconds{0.0};                            //!< Averaged over the evaluation window
+    double avgAoIMs{0.0};                                 //!< Averaged over the evaluation window (ms)
     uint8_t priority{0};                                  //!< Scheduler priority suggestion/observation
     uint8_t queueBin{0};                                  //!< Discrete bin for queue size
     uint8_t aoiBin{0};                                    //!< Discrete bin for AoI
@@ -88,6 +88,7 @@ class NrBwpSwitchController : public Object
      * @brief Record ACK arrival to update AoI.
      */
     void RecordAck(uint16_t rnti, uint8_t lcid);
+    void RecordAoiSample(Time delay);
 
     double GetAverageAoISeconds() const;
     double GetTotalSwitchEnergyJ() const;

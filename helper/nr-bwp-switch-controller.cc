@@ -145,6 +145,13 @@ NrBwpSwitchController::RecordAck(uint16_t rnti, uint8_t lcid)
     }
 }
 
+void
+NrBwpSwitchController::RecordAoiSample(Time delay)
+{
+    m_aoiAccumulatedSeconds += delay.GetSeconds();
+    m_aoiSamples++;
+}
+
 double
 NrBwpSwitchController::GetAverageAoISeconds() const
 {
