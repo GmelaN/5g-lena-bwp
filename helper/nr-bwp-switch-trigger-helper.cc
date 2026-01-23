@@ -136,7 +136,7 @@ NrBwpSwitchTriggerHelper::GetTypeId()
                                           "WindowDetect"))
             .AddAttribute("SwitchThresholdBytes",
                           "Queue threshold (tau) for window-based switching (bytes).",
-                          UintegerValue(3000),
+                          UintegerValue(2000),
                           MakeUintegerAccessor(&NrBwpSwitchTriggerHelper::m_switchThresholdBytes),
                           MakeUintegerChecker<uint32_t>())
             .AddAttribute("ControlWindow",
@@ -520,17 +520,23 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
                                             PerUeContext& ctx,
                                             bool isSwitching)
 {
-    constexpr uint32_t kLogEvery = 30; // avoid log flood
+    constexpr uint32_t kLogEvery = 10; // avoid log flood
     auto& qTable = GetQTableForUe(rnti);
     auto& visitTable = GetVisitTableForUe(rnti);
-    uint32_t evalCount = ++GetEvalCountForUe(rnti);
+    // Decay epsilon only when we have meaningful observations in this window.
+    bool hasObservation = (ctx.queueSamples > 0) || (ctx.aoiSamples > 0);
+    uint32_t evalCount = GetEvalCountForUe(rnti);
+    if (hasObservation)
+    {
+        evalCount = ++GetEvalCountForUe(rnti);
+    }
     double epsilon =
         std::max(m_epsilonMin, m_epsilon * std::exp(-m_epsilonDecay * static_cast<double>(evalCount)));
     double energyNorm = std::max(m_rewardEnergyNorm, 1e-9);
     double aoiNorm = std::max(m_rewardAoiNorm, 1e-9);
     static uint32_t count = 0;
-    // Update Q for previous window (transition prev -> current).
-    if (ctx.hasPrev)
+    // Update Q for previous window (transition prev -> current) only if we observed something now.
+    if (ctx.hasPrev && hasObservation)
     {
         uint32_t idx = ctx.prevStateIdx * m_actionCount + ctx.prevActionIdx;
         uint32_t visits = ++visitTable[idx];
@@ -561,6 +567,15 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
     }
 
     if (isSwitching)
+    {
+        NrBwpSwitchDecision decision;
+        decision.bsr = state.bsr;
+        ctx.hasPrev = false;
+        ctx.pendingSwitchEnergy = 0.0;
+        return decision;
+    }
+
+    if (!hasObservation)
     {
         NrBwpSwitchDecision decision;
         decision.bsr = state.bsr;
@@ -627,9 +642,16 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
         count = 0;
     }
 
-    ctx.prevStateIdx = stateIdx;
-    ctx.prevActionIdx = chosen;
-    ctx.hasPrev = true;
+    if (hasObservation)
+    {
+        ctx.prevStateIdx = stateIdx;
+        ctx.prevActionIdx = chosen;
+        ctx.hasPrev = true;
+    }
+    else
+    {
+        ctx.hasPrev = false;
+    }
 
     if (decision.targetBwpId != std::numeric_limits<uint8_t>::max() &&
         decision.targetBwpId != state.currentBwpId && m_gnbManager != nullptr)
