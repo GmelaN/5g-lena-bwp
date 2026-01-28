@@ -71,6 +71,25 @@ class NrMacSapProvider
      * @param params BufferStatusReportParameters
      */
     virtual void BufferStatusReport(BufferStatusReportParameters params) = 0;
+
+    /**
+     * Parameters for RLC SDU arrival notification.
+     */
+    struct RlcDlArrivalParameters
+    {
+        uint16_t rnti;          /**< the C-RNTI identifying the UE */
+        uint8_t lcid;           /**< the logical channel id corresponding to the RLC instance */
+        uint32_t bytes;         /**< size of the arriving SDU in bytes */
+        double iatMs;           /**< inter-arrival time in milliseconds (per RLC instance) */
+        double arrivalTimeSeconds; /**< absolute arrival time in seconds */
+    };
+
+    /**
+     * Notify the MAC of an RLC SDU arrival (DL).
+     *
+     * @param params RlcDlArrivalParameters
+     */
+    virtual void NotifyRlcDlArrival(RlcDlArrivalParameters params) = 0;
 };
 
 /**
@@ -200,6 +219,7 @@ class GnbMacMemberNrMacSapProvider : public NrMacSapProvider
     // inherited from NrMacSapProvider
     void TransmitPdu(TransmitPduParameters params) override;
     void BufferStatusReport(BufferStatusReportParameters params) override;
+    void NotifyRlcDlArrival(RlcDlArrivalParameters params) override;
 
   private:
     C* m_mac; ///< the MAC class
@@ -223,6 +243,13 @@ void
 GnbMacMemberNrMacSapProvider<C>::BufferStatusReport(BufferStatusReportParameters params)
 {
     m_mac->DoTransmitBufferStatusReport(params);
+}
+
+template <class C>
+void
+GnbMacMemberNrMacSapProvider<C>::NotifyRlcDlArrival(RlcDlArrivalParameters params)
+{
+    m_mac->DoNotifyRlcDlArrival(params);
 }
 
 } // namespace ns3

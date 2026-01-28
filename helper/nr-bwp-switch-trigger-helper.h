@@ -25,7 +25,7 @@ namespace ns3
 
 /**
  * @brief Helper that aggregates per-UE state and periodically runs a policy
- * to decide BWP/priority switches. Designed to host Pareto Q-learning.
+ * to decide BWP switches. Designed to host Pareto Q-learning.
  */
 class NrBwpSwitchTriggerHelper : public Object
 {
@@ -35,7 +35,9 @@ class NrBwpSwitchTriggerHelper : public Object
     enum InternalPolicyMode
     {
         POLICY_Q_LEARNING = 0,
-        POLICY_WINDOW_DETECT = 1
+        POLICY_WINDOW_DETECT = 1,
+        NO_POLICY_BWP0 = 2,
+        NO_POLICY_BWP1 = 3
     };
 
     NrBwpSwitchTriggerHelper();
@@ -46,25 +48,19 @@ class NrBwpSwitchTriggerHelper : public Object
     void SetGnbManager(const Ptr<BwpManagerGnb>& gnbManager);
     void AddUeManager(uint16_t rnti, const Ptr<BwpManagerUe>& ueManager);
 
-    void NotifyBsr(uint16_t rnti,
-                   uint8_t lcid,
-                   uint8_t currentBwp,
-                   uint8_t priority,
-                   const NrMacSapProvider::BufferStatusReportParameters& params);
-    void NotifyDlQueue(uint16_t rnti, uint8_t lcid, uint8_t currentBwp, uint8_t priority, uint32_t queueBytes);
+    void NotifyDlQueue(uint16_t rnti, uint8_t lcid, uint8_t currentBwp, uint32_t queueBytes);
+    void NotifyDlScheduling(uint16_t rnti, uint8_t bwpId, uint32_t tbSizeBytes);
     void RecordEnqueue(uint16_t rnti, uint8_t lcid);
     void RecordAck(uint16_t rnti, uint8_t lcid);
     void RecordAoiSample(uint16_t rnti, uint8_t lcid, Time delay);
 
   private:
     static constexpr uint8_t m_dwellBins = 11; // 0..10 (100 ms with 10 ms bins)
-    static constexpr uint8_t m_actionCount = 6; // 2 BWP * 3 priority
+    static constexpr uint8_t m_actionCount = 2; // 2 BWP targets
 
     struct PerUeContext
     {
-        NrMacSapProvider::BufferStatusReportParameters lastBsr{};
         uint8_t currentBwp{0};
-        uint8_t priority{0};
 
         uint32_t prevStateIdx{0};
         uint8_t prevActionIdx{0};
@@ -116,7 +112,7 @@ class NrBwpSwitchTriggerHelper : public Object
     uint8_t QuantizeQueue(double avgQueue) const;
     uint8_t QuantizeAoI(double avgAoIMs) const;
     uint8_t QuantizeDwell(double dwellSeconds) const;
-    uint32_t ComputeStateIndex(uint8_t queueBin, uint8_t aoiBin, uint8_t dwellBin, uint8_t bwp, uint8_t pri) const;
+    uint32_t ComputeStateIndex(uint8_t queueBin, uint8_t aoiBin, uint8_t dwellBin, uint8_t bwp) const;
     NrBwpSwitchDecision RunInternalPolicy(uint16_t rnti,
                                           const NrBwpSwitchState& state,
                                           uint32_t stateIdx,
@@ -132,7 +128,6 @@ class NrBwpSwitchTriggerHelper : public Object
     std::vector<uint32_t>& GetVisitTableForUe(uint16_t rnti);
     uint32_t& GetEvalCountForUe(uint16_t rnti);
     uint8_t DecodeActionBwp(uint8_t actionIdx) const;
-    uint8_t DecodeActionPriority(uint8_t actionIdx) const;
 
     NrBwpSwitchController::PolicyCallback m_policy;
     Callback<void, uint16_t, const NrBwpSwitchDecision&> m_decisionCb;
@@ -141,7 +136,7 @@ class NrBwpSwitchTriggerHelper : public Object
     std::unordered_map<uint16_t, Ptr<BwpManagerUe>> m_ueManagers;
     std::unordered_map<uint16_t, PerUeContext> m_ueContext;
 
-    const uint32_t m_stateCount{3 * 3 * m_dwellBins * 2 * 3}; // queue x aoi x dwell x bwp x pri
+    const uint32_t m_stateCount{3 * 3 * m_dwellBins * 2}; // queue x aoi x dwell x bwp
     std::unordered_map<uint16_t, std::vector<std::pair<double, double>>> m_qTablesByUe; // per-UE Q-table
     std::unordered_map<uint16_t, std::vector<uint32_t>> m_visitTablesByUe; // state-action visit counts
     std::unordered_map<uint16_t, uint32_t> m_evalCountsByUe; // per-UE evaluation windows processed

@@ -132,6 +132,26 @@ NrRlcUm::DoTransmitPdcpPdu(Ptr<Packet> p)
         m_txBufferSize += p->GetSize();
         NS_LOG_LOGIC("NumOfBuffers = " << m_txBuffer.size());
         NS_LOG_LOGIC("txBufferSize = " << m_txBufferSize);
+
+        if (m_macSapProvider)
+        {
+            double now = Simulator::Now().GetSeconds();
+            double iatMs = 0.0;
+            if (m_hasLastSduArrival)
+            {
+                iatMs = (now - m_lastSduArrivalTimeSeconds) * 1000.0;
+            }
+            m_lastSduArrivalTimeSeconds = now;
+            m_hasLastSduArrival = true;
+
+            NrMacSapProvider::RlcDlArrivalParameters params;
+            params.rnti = m_rnti;
+            params.lcid = m_lcid;
+            params.bytes = p->GetSize();
+            params.iatMs = iatMs;
+            params.arrivalTimeSeconds = now;
+            m_macSapProvider->NotifyRlcDlArrival(params);
+        }
     }
     else
     {

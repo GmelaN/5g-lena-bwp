@@ -16,6 +16,8 @@
 
 #include "ns3/traced-callback.h"
 
+#include <unordered_map>
+
 namespace ns3
 {
 
@@ -298,6 +300,7 @@ class NrGnbMac : public Object
     // forwarded from NrMacSapProvider
     void DoTransmitPdu(NrMacSapProvider::TransmitPduParameters);
     void DoTransmitBufferStatusReport(NrMacSapProvider::BufferStatusReportParameters);
+    void DoNotifyRlcDlArrival(NrMacSapProvider::RlcDlArrivalParameters params);
     void DoUlCqiReport(NrMacSchedSapProvider::SchedUlCqiInfoReqParameters ulcqi);
     // forwarded from NrMacCchedSapUser
     void DoCschedCellConfigCnf(NrMacCschedSapUser::CschedCellConfigCnfParameters params);
@@ -407,6 +410,46 @@ class NrGnbMac : public Object
     // end of RACH related member variables
 
     std::unordered_map<uint16_t, std::unordered_map<uint8_t, NrMacSapUser*>> m_rlcAttached;
+
+    struct RlcIatKfState
+    {
+        bool initialized{false};
+        double levelMs{0.0};
+        double trendMsPerSample{0.0};
+        double p00{0.0};
+        double p01{0.0};
+        double p10{0.0};
+        double p11{0.0};
+        double lastArrivalTimeSeconds{0.0};
+        double lastNis{0.0};
+    };
+
+    struct RlcBytesKfState
+    {
+        bool initialized{false};
+        double levelBytes{0.0};
+        double trendBytesPerSample{0.0};
+        double p00{0.0};
+        double p01{0.0};
+        double p10{0.0};
+        double p11{0.0};
+        double lastNis{0.0};
+    };
+
+    std::unordered_map<uint16_t, RlcIatKfState> m_rlcIatKfByRnti;
+    std::unordered_map<uint16_t, RlcBytesKfState> m_rlcBytesKfByRnti;
+    bool m_enableRlcIatKfLog{true};
+    bool m_enableRlcBytesKfLog{true};
+    double m_rlcIatKfProcessNoiseLevel{1.0};
+    double m_rlcIatKfProcessNoiseTrend{1.0};
+    double m_rlcIatKfMeasurementNoise{25.0};
+    double m_rlcIatKfInitVarLevel{100.0};
+    double m_rlcIatKfInitVarTrend{100.0};
+    double m_rlcBytesKfProcessNoiseLevel{1.0};
+    double m_rlcBytesKfProcessNoiseTrend{1.0};
+    double m_rlcBytesKfMeasurementNoise{25.0};
+    double m_rlcBytesKfInitVarLevel{100.0};
+    double m_rlcBytesKfInitVarTrend{100.0};
 
     // UE activation flag: only active UEs are scheduled on this BWP.
     std::unordered_map<uint16_t, bool> m_ueActive;

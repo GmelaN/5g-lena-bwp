@@ -24,7 +24,7 @@ NrBwpSwitchController::GetTypeId()
             .SetGroupName("nr")
             .AddConstructor<NrBwpSwitchController>()
             .AddAttribute("UseTriggerHelper",
-                          "Route BSR updates to the trigger helper and use its decisions.",
+                          "Use the trigger helper inputs and decisions.",
                           BooleanValue(false),
                           MakeBooleanAccessor(&NrBwpSwitchController::m_useTriggerHelper),
                           MakeBooleanChecker());
@@ -39,7 +39,7 @@ NrBwpSwitchController::NrBwpSwitchController()
     m_triggerHelper->SetDecisionCallback(MakeCallback(&NrBwpSwitchController::OnHelperDecision, this));
     // Delay helper evaluations to avoid interfering with RA/RRC.
     m_triggerHelper->SetAttribute("StartDelay", TimeValue(Seconds(0.5)));
-    m_triggerHelper->SetAttribute("EnableInternalPolicy", BooleanValue(false));
+    m_triggerHelper->SetAttribute("EnableInternalPolicy", BooleanValue(true));
 }
 
 void
@@ -79,43 +79,6 @@ NrBwpSwitchController::GetTriggerHelper() const
 }
 
 void
-NrBwpSwitchController::HandleBsr(uint16_t rnti,
-                                 uint8_t lcid,
-                                 uint8_t currentBwp,
-                                 const NrMacSapProvider::BufferStatusReportParameters& params)
-{
-    NS_LOG_FUNCTION(this << rnti << static_cast<uint32_t>(lcid) << static_cast<uint32_t>(currentBwp));
-
-    if (m_gnbManager == nullptr)
-    {
-        return;
-    }
-
-    if (m_useTriggerHelper && m_triggerHelper)
-    {
-        m_triggerHelper->NotifyBsr(rnti, lcid, currentBwp, 0, params);
-        return;
-    }
-
-    if (m_policy.IsNull())
-    {
-        return;
-    }
-
-    NrBwpSwitchState state;
-    state.bsr = params;
-    state.currentBwpId = currentBwp;
-    state.switchingRemaining = m_gnbManager->GetSwitchingRemaining(rnti);
-
-    auto decision = RunPolicy(state);
-    if (decision.targetBwpId != std::numeric_limits<uint8_t>::max() &&
-        decision.targetBwpId != currentBwp && !m_gnbManager->IsSwitching(rnti))
-    {
-        ApplySwitch(rnti, decision.targetBwpId);
-    }
-}
-
-void
 NrBwpSwitchController::RecordEnqueue(uint16_t rnti, uint8_t lcid)
 {
     uint64_t key = (static_cast<uint64_t>(rnti) << 8) | lcid;
@@ -150,6 +113,24 @@ NrBwpSwitchController::RecordAoiSample(Time delay)
 {
     m_aoiAccumulatedSeconds += delay.GetSeconds();
     m_aoiSamples++;
+}
+
+void
+NrBwpSwitchController::HandleDlScheduling(const NrSchedulingCallbackInfo& info)
+{
+    (void)info;
+}
+
+void
+NrBwpSwitchController::DlSchedulingCallback(Ptr<NrBwpSwitchController> controller,
+                                            std::string path,
+                                            NrSchedulingCallbackInfo info)
+{
+    (void)path;
+    if (controller)
+    {
+        controller->HandleDlScheduling(info);
+    }
 }
 
 double

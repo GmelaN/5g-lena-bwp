@@ -39,6 +39,7 @@ class NrSimpleUeCcmMacSapProvider : public NrMacSapProvider
     // inherited from NrMacSapProvider
     void TransmitPdu(NrMacSapProvider::TransmitPduParameters params) override;
     void BufferStatusReport(NrMacSapProvider::BufferStatusReportParameters params) override;
+    void NotifyRlcDlArrival(NrMacSapProvider::RlcDlArrivalParameters params) override;
 
   private:
     NrSimpleUeComponentCarrierManager* m_mac; ///< the component carrier manager
@@ -59,6 +60,12 @@ void
 NrSimpleUeCcmMacSapProvider::BufferStatusReport(BufferStatusReportParameters params)
 {
     m_mac->DoTransmitBufferStatusReport(params);
+}
+
+void
+NrSimpleUeCcmMacSapProvider::NotifyRlcDlArrival(RlcDlArrivalParameters params)
+{
+    (void)params;
 }
 
 ///////////////////////////////////////////////////////////

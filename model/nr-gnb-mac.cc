@@ -25,6 +25,8 @@
 
 #include "ns3/log.h"
 #include "ns3/spectrum-model.h"
+#include "ns3/boolean.h"
+#include "ns3/double.h"
 #include "ns3/uinteger.h"
 
 #include <algorithm>
@@ -419,6 +421,66 @@ NrGnbMac::GetTypeId()
                 UintegerValue(16),
                 MakeUintegerAccessor(&NrGnbMac::SetNumHarqProcess, &NrGnbMac::GetNumHarqProcess),
                 MakeUintegerChecker<uint8_t>())
+            .AddAttribute("EnableRlcIatKfLog",
+                          "Enable logging of RLC SDU arrival IAT Kalman filter outputs.",
+                          BooleanValue(true),
+                          MakeBooleanAccessor(&NrGnbMac::m_enableRlcIatKfLog),
+                          MakeBooleanChecker())
+            .AddAttribute("RlcIatKfProcessNoiseLevel",
+                          "Process noise for RLC IAT level state (ms^2).",
+                          DoubleValue(1.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcIatKfProcessNoiseLevel),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("RlcIatKfProcessNoiseTrend",
+                          "Process noise for RLC IAT trend state ((ms/sample)^2).",
+                          DoubleValue(1.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcIatKfProcessNoiseTrend),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("RlcIatKfMeasurementNoise",
+                          "Measurement noise for RLC IAT (ms^2).",
+                          DoubleValue(25.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcIatKfMeasurementNoise),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("RlcIatKfInitVarLevel",
+                          "Initial variance for RLC IAT level state.",
+                          DoubleValue(100.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcIatKfInitVarLevel),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("RlcIatKfInitVarTrend",
+                          "Initial variance for RLC IAT trend state.",
+                          DoubleValue(100.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcIatKfInitVarTrend),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("EnableRlcBytesKfLog",
+                          "Enable logging of RLC SDU arrival bytes Kalman filter outputs.",
+                          BooleanValue(true),
+                          MakeBooleanAccessor(&NrGnbMac::m_enableRlcBytesKfLog),
+                          MakeBooleanChecker())
+            .AddAttribute("RlcBytesKfProcessNoiseLevel",
+                          "Process noise for RLC arrival bytes level state (bytes^2).",
+                          DoubleValue(1.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcBytesKfProcessNoiseLevel),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("RlcBytesKfProcessNoiseTrend",
+                          "Process noise for RLC arrival bytes trend state ((bytes/sample)^2).",
+                          DoubleValue(1.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcBytesKfProcessNoiseTrend),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("RlcBytesKfMeasurementNoise",
+                          "Measurement noise for RLC arrival bytes (bytes^2).",
+                          DoubleValue(25.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcBytesKfMeasurementNoise),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("RlcBytesKfInitVarLevel",
+                          "Initial variance for RLC arrival bytes level state.",
+                          DoubleValue(100.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcBytesKfInitVarLevel),
+                          MakeDoubleChecker<double>())
+            .AddAttribute("RlcBytesKfInitVarTrend",
+                          "Initial variance for RLC arrival bytes trend state.",
+                          DoubleValue(100.0),
+                          MakeDoubleAccessor(&NrGnbMac::m_rlcBytesKfInitVarTrend),
+                          MakeDoubleChecker<double>())
             .AddTraceSource("DlScheduling",
                             "Information regarding DL scheduling.",
                             MakeTraceSourceAccessor(&NrGnbMac::m_dlScheduling),
@@ -1121,6 +1183,131 @@ NrGnbMac::DoTransmitBufferStatusReport(NrMacSapProvider::BufferStatusReportParam
                 << ", PDU Size=" << params.statusPduSize);
 
     m_macSchedSapProvider->SchedDlRlcBufferReq(schedParams);
+}
+
+void
+NrGnbMac::DoNotifyRlcDlArrival(NrMacSapProvider::RlcDlArrivalParameters params)
+{
+    auto& iatState = m_rlcIatKfByRnti[params.rnti];
+    double now = params.arrivalTimeSeconds;
+    double iatMs = 0.0;
+    if (iatState.lastArrivalTimeSeconds > 0.0 && now > iatState.lastArrivalTimeSeconds)
+    {
+        iatMs = (now - iatState.lastArrivalTimeSeconds) * 1000.0;
+    }
+    iatState.lastArrivalTimeSeconds = now;
+
+    const bool haveIat = (iatMs > 0.0);
+    if (haveIat)
+    {
+        double measurement = iatMs;
+        if (!iatState.initialized)
+        {
+            iatState.levelMs = measurement;
+            iatState.trendMsPerSample = 0.0;
+            iatState.p00 = std::max(m_rlcIatKfInitVarLevel, 1e-9);
+            iatState.p11 = std::max(m_rlcIatKfInitVarTrend, 1e-9);
+            iatState.p01 = 0.0;
+            iatState.p10 = 0.0;
+            iatState.lastNis = 0.0;
+            iatState.initialized = true;
+        }
+        else
+        {
+            const double dt = 1.0;
+            const double q0 = std::max(m_rlcIatKfProcessNoiseLevel, 0.0);
+            const double q1 = std::max(m_rlcIatKfProcessNoiseTrend, 0.0);
+            const double r = std::max(m_rlcIatKfMeasurementNoise, 0.0);
+
+            double p00 = iatState.p00 + dt * (iatState.p01 + iatState.p10) +
+                         dt * dt * iatState.p11 + q0;
+            double p01 = iatState.p01 + dt * iatState.p11;
+            double p10 = iatState.p10 + dt * iatState.p11;
+            double p11 = iatState.p11 + q1;
+
+            double x0 = iatState.levelMs + dt * iatState.trendMsPerSample;
+            double x1 = iatState.trendMsPerSample;
+
+            double resid = measurement - x0;
+            double s = p00 + r;
+            double k0 = (s > 0.0) ? (p00 / s) : 0.0;
+            double k1 = (s > 0.0) ? (p10 / s) : 0.0;
+
+            iatState.levelMs = x0 + k0 * resid;
+            iatState.trendMsPerSample = x1 + k1 * resid;
+            iatState.p00 = (1.0 - k0) * p00;
+            iatState.p01 = (1.0 - k0) * p01;
+            iatState.p10 = p10 - k1 * p00;
+            iatState.p11 = p11 - k1 * p01;
+            iatState.lastNis = (s > 0.0) ? ((resid * resid) / s) : 0.0;
+        }
+    }
+
+    auto& bytesState = m_rlcBytesKfByRnti[params.rnti];
+    double bytesMeasurement = static_cast<double>(params.bytes);
+    if (!bytesState.initialized)
+    {
+        bytesState.levelBytes = bytesMeasurement;
+        bytesState.trendBytesPerSample = 0.0;
+        bytesState.p00 = std::max(m_rlcBytesKfInitVarLevel, 1e-9);
+        bytesState.p11 = std::max(m_rlcBytesKfInitVarTrend, 1e-9);
+        bytesState.p01 = 0.0;
+        bytesState.p10 = 0.0;
+        bytesState.lastNis = 0.0;
+        bytesState.initialized = true;
+    }
+    else
+    {
+        const double dt = 1.0;
+        const double q0 = std::max(m_rlcBytesKfProcessNoiseLevel, 0.0);
+        const double q1 = std::max(m_rlcBytesKfProcessNoiseTrend, 0.0);
+        const double r = std::max(m_rlcBytesKfMeasurementNoise, 0.0);
+
+        double p00 = bytesState.p00 + dt * (bytesState.p01 + bytesState.p10) +
+                     dt * dt * bytesState.p11 + q0;
+        double p01 = bytesState.p01 + dt * bytesState.p11;
+        double p10 = bytesState.p10 + dt * bytesState.p11;
+        double p11 = bytesState.p11 + q1;
+
+        double x0 = bytesState.levelBytes + dt * bytesState.trendBytesPerSample;
+        double x1 = bytesState.trendBytesPerSample;
+
+        double resid = bytesMeasurement - x0;
+        double s = p00 + r;
+        double k0 = (s > 0.0) ? (p00 / s) : 0.0;
+        double k1 = (s > 0.0) ? (p10 / s) : 0.0;
+
+        bytesState.levelBytes = x0 + k0 * resid;
+        bytesState.trendBytesPerSample = x1 + k1 * resid;
+        bytesState.p00 = (1.0 - k0) * p00;
+        bytesState.p01 = (1.0 - k0) * p01;
+        bytesState.p10 = p10 - k1 * p00;
+        bytesState.p11 = p11 - k1 * p01;
+        bytesState.lastNis = (s > 0.0) ? ((resid * resid) / s) : 0.0;
+    }
+
+    if (m_enableRlcIatKfLog && haveIat)
+    {
+        NS_LOG_UNCOND(Simulator::Now().As(Time::MS)
+                      << ": RLC IAT KF: rnti=" << params.rnti
+                      << " lcid=" << static_cast<uint32_t>(params.lcid)
+                      << " bytes=" << params.bytes
+                      << " iatMs=" << iatMs
+                      << " levelMs=" << iatState.levelMs
+                      << " trendMsPerSample=" << iatState.trendMsPerSample
+                      << " nis=" << iatState.lastNis);
+    }
+
+    if (m_enableRlcBytesKfLog)
+    {
+        NS_LOG_UNCOND(Simulator::Now().As(Time::MS)
+                      << ": RLC BYTES KF: rnti=" << params.rnti
+                      << " lcid=" << static_cast<uint32_t>(params.lcid)
+                      << " bytes=" << params.bytes
+                      << " levelBytes=" << bytesState.levelBytes
+                      << " trendBytesPerSample=" << bytesState.trendBytesPerSample
+                      << " nis=" << bytesState.lastNis);
+    }
 }
 
 // forwarded from NrMacSapProvider

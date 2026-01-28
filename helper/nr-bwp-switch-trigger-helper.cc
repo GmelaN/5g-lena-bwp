@@ -130,10 +130,12 @@ NrBwpSwitchTriggerHelper::GetTypeId()
                           "Select internal policy when no external policy is set.",
                           EnumValue(POLICY_Q_LEARNING),
                           MakeEnumAccessor<NrBwpSwitchTriggerHelper::InternalPolicyMode>(&NrBwpSwitchTriggerHelper::m_internalPolicyMode),
-                          MakeEnumChecker(POLICY_Q_LEARNING,
-                                          "Qlearning",
-                                          POLICY_WINDOW_DETECT,
-                                          "WindowDetect"))
+                          MakeEnumChecker(
+                            POLICY_Q_LEARNING, "Qlearning",
+                            POLICY_WINDOW_DETECT, "WindowDetect",
+                            NO_POLICY_BWP0, "bwp0",
+                            NO_POLICY_BWP1, "bwp1"
+                        ))
             .AddAttribute("SwitchThresholdBytes",
                           "Queue threshold (tau) for window-based switching (bytes).",
                           UintegerValue(2000),
@@ -285,62 +287,22 @@ NrBwpSwitchTriggerHelper::AddUeManager(uint16_t rnti, const Ptr<BwpManagerUe>& u
 }
 
 void
-NrBwpSwitchTriggerHelper::NotifyBsr(
-    uint16_t rnti,
-    uint8_t lcid,
-    uint8_t currentBwp,
-    uint8_t priority,
-    const NrMacSapProvider::BufferStatusReportParameters& params)
-{
-    NS_LOG_FUNCTION(this << rnti << static_cast<uint32_t>(lcid)
-                         << static_cast<uint32_t>(currentBwp) << static_cast<uint32_t>(priority));
-    NS_LOG_INFO("NotifyBsr rnti=" << rnti << " lcid=" << +lcid << " bwp=" << +currentBwp
-                                  << " priority=" << +priority << " txQ=" << params.txQueueSize
-                                  << " retxQ=" << params.retxQueueSize);
-
-    auto& ctx = m_ueContext[rnti];
-    ctx.lastBsr = params;
-    if (ctx.currentBwp != currentBwp)
-    {
-        ctx.lastSwitchTimeSeconds = Simulator::Now().GetSeconds();
-    }
-    ctx.currentBwp = currentBwp;
-    ctx.priority = priority;
-
-    ctx.queueSumBytes += params.txQueueSize;
-    ctx.queueSamples++;
-
-    ctx.energySumJ += static_cast<double>(params.txQueueSize) * m_energyPerByteJ;
-
-    if (!m_evalEvent.IsPending())
-    {
-        ScheduleEvaluation();
-    }
-}
-
-void
 NrBwpSwitchTriggerHelper::NotifyDlQueue(uint16_t rnti,
                                         uint8_t lcid,
                                         uint8_t currentBwp,
-                                        uint8_t priority,
                                         uint32_t queueBytes)
 {
     NS_LOG_FUNCTION(this << rnti << static_cast<uint32_t>(lcid) << static_cast<uint32_t>(currentBwp)
-                         << static_cast<uint32_t>(priority) << queueBytes);
+                         << queueBytes);
     NS_LOG_INFO("NotifyDlQueue rnti=" << rnti << " lcid=" << +lcid << " bwp=" << +currentBwp
-                                      << " priority=" << +priority << " queue=" << queueBytes);
+                                      << " queue=" << queueBytes);
 
     auto& ctx = m_ueContext[rnti];
-    ctx.lastBsr.rnti = rnti;
-    ctx.lastBsr.lcid = lcid;
-    ctx.lastBsr.txQueueSize = queueBytes;
-    ctx.lastBsr.retxQueueSize = 0;
     if (ctx.currentBwp != currentBwp)
     {
         ctx.lastSwitchTimeSeconds = Simulator::Now().GetSeconds();
     }
     ctx.currentBwp = currentBwp;
-    ctx.priority = priority;
 
     ctx.queueSumBytes += queueBytes;
     ctx.queueSamples++;
@@ -351,11 +313,18 @@ NrBwpSwitchTriggerHelper::NotifyDlQueue(uint16_t rnti,
     }
 }
 
+void
+NrBwpSwitchTriggerHelper::NotifyDlScheduling(uint16_t rnti, uint8_t bwpId, uint32_t tbSizeBytes)
+{
+    (void)rnti;
+    (void)bwpId;
+    (void)tbSizeBytes;
+}
+
 NrBwpSwitchTriggerHelper::PerUeContext&
 NrBwpSwitchTriggerHelper::GetOrCreateCtx(uint16_t rnti)
 {
     auto& ctx = m_ueContext[rnti];
-    ctx.lastBsr.rnti = rnti; // seed in case only enqueue/ack arrive.
     if (m_gnbManager != nullptr) // && ctx.currentBwp == 0)
     {
         // Try to pick the last forced BWP as a best-effort default.
@@ -482,34 +451,25 @@ NrBwpSwitchTriggerHelper::QuantizeDwell(double dwellSeconds) const
 uint8_t
 NrBwpSwitchTriggerHelper::DecodeActionBwp(uint8_t actionIdx) const
 {
-    return actionIdx / 3; // 0 or 1 (since actionCount = 6)
-}
-
-uint8_t
-NrBwpSwitchTriggerHelper::DecodeActionPriority(uint8_t actionIdx) const
-{
-    return actionIdx % 3;
+    return std::min<uint8_t>(actionIdx, 1);
 }
 
 uint32_t
 NrBwpSwitchTriggerHelper::ComputeStateIndex(uint8_t queueBin,
                                             uint8_t aoiBin,
                                             uint8_t dwellBin,
-                                            uint8_t bwp,
-                                            uint8_t pri) const
+                                            uint8_t bwp) const
 {
     queueBin = std::min<uint8_t>(queueBin, 2);
     aoiBin = std::min<uint8_t>(aoiBin, 2);
     dwellBin = std::min<uint8_t>(dwellBin, static_cast<uint8_t>(m_dwellBins - 1));
     bwp = std::min<uint8_t>(bwp, 1);
-    pri = std::min<uint8_t>(pri, 2);
 
-    // ((((queue *3 + aoi)*dwellBins + dwell)*2 + bwp)*3 + pri)
+    // (((queue *3 + aoi)*dwellBins + dwell)*2 + bwp)
     uint32_t idx = queueBin;
     idx = idx * 3 + aoiBin;
     idx = idx * m_dwellBins + dwellBin;
     idx = idx * 2 + bwp;
-    idx = idx * 3 + pri;
     return idx;
 }
 
@@ -569,7 +529,6 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
     if (isSwitching)
     {
         NrBwpSwitchDecision decision;
-        decision.bsr = state.bsr;
         ctx.hasPrev = false;
         ctx.pendingSwitchEnergy = 0.0;
         return decision;
@@ -578,7 +537,6 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
     if (!hasObservation)
     {
         NrBwpSwitchDecision decision;
-        decision.bsr = state.bsr;
         ctx.hasPrev = false;
         ctx.pendingSwitchEnergy = 0.0;
         return decision;
@@ -611,8 +569,6 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
 
     NrBwpSwitchDecision decision;
     decision.targetBwpId = DecodeActionBwp(chosen);
-    decision.targetPriority = DecodeActionPriority(chosen);
-    decision.bsr = state.bsr;
 
     if ((evalCount % kLogEvery) == 0)
     {
@@ -621,9 +577,8 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
         NS_LOG_UNCOND("QDBG rnti=" << rnti << " eval=" << evalCount << " stateIdx=" << stateIdx
                                    << " queueBin=" << +state.queueBin << " aoiBin=" << +state.aoiBin
                                    << " dwellBin=" << +state.dwellBin << " bwp=" << +state.currentBwpId
-                                   << " pri=" << +state.priority << " action=" << +chosen
+                                   << " action=" << +chosen
                                    << " tgtBwp=" << +decision.targetBwpId
-                                   << " tgtPri=" << +decision.targetPriority
                                    << " eps=" << epsilon
                                    << " alpha=" << ((ctx.hasPrev) ? std::max(m_alphaMin, m_alpha / std::sqrt(static_cast<double>(std::max<uint32_t>(1, visitTable[ctx.prevStateIdx * m_actionCount + ctx.prevActionIdx])))) : m_alpha)
                                    << " rE=" << ((ctx.hasPrev) ? (-(ctx.energySumJ + ctx.pendingSwitchEnergy) / energyNorm) : 0.0)
@@ -635,10 +590,10 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
     if((++count) % 50 == 0)
     {
         NS_LOG_INFO(Simulator::Now().As(Time::S) << " RunInternalPolicy rnti=" << rnti << " stateIdx=" << stateIdx << " bwp=" << +state.currentBwpId
-                                          << " pri=" << +state.priority << " queueBin=" << +state.queueBin
+                                          << " queueBin=" << +state.queueBin
                                           << " aoiBin=" << +state.aoiBin << " dwellBin=" << +state.dwellBin
                                           << " action=" << +chosen << " tgtBwp=" << +decision.targetBwpId
-                                          << " tgtPri=" << +decision.targetPriority);
+                                          );
         count = 0;
     }
 
@@ -677,7 +632,6 @@ NrBwpSwitchTriggerHelper::RunWindowDetectPolicy(uint16_t rnti,
 {
     (void)rnti;
     NrBwpSwitchDecision decision;
-    decision.bsr = state.bsr;
 
     uint8_t defaultBwp = m_defaultBwpId;
     uint8_t specificBwp = m_specificBwpId;
@@ -745,7 +699,7 @@ NrBwpSwitchTriggerHelper::RunWindowDetectPolicy(uint16_t rnti,
         return decision;
     }
 
-    uint32_t backlogBytes = state.bsr.txQueueSize + state.bsr.retxQueueSize;
+    uint32_t backlogBytes = static_cast<uint32_t>(state.avgQueueSizeBytes);
 
     auto requestSwitch = [&](uint8_t targetBwp) -> bool {
         if (targetBwp == ctx.policyCurrentBwp)
@@ -866,7 +820,8 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
         double avgQueue = (ctx.queueSamples > 0) ? ctx.queueSumBytes / static_cast<double>(ctx.queueSamples) : 0.0;
         double avgAoIMs = (ctx.aoiSamples > 0) ? ctx.aoiSumMs / static_cast<double>(ctx.aoiSamples) : 0.0;
         NS_LOG_UNCOND(Simulator::Now().As(Time::MS) << "\tEval rnti=" << rnti << "\tavgQueue=" << avgQueue << "B\tavgAoI=" << avgAoIMs
-                                 << "ms\tsamplesAoi=" << ctx.aoiSamples << "\tsamplesQ=" << ctx.queueSamples);
+                                 << "ms"
+                                 << "\tsamplesAoi=" << ctx.aoiSamples << "\tsamplesQ=" << ctx.queueSamples);
 
 
         uint8_t queueBin = QuantizeQueue(avgQueue);
@@ -877,18 +832,21 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
 
         NrBwpSwitchState state;
         state.currentBwpId = ctx.currentBwp;
-        state.bsr = ctx.lastBsr;
         state.switchingRemaining =
             (m_gnbManager != nullptr) ? m_gnbManager->GetSwitchingRemaining(rnti) : Seconds(0);
         state.avgQueueSizeBytes = avgQueue;
         state.avgAoIMs = avgAoIMs;
-        state.priority = ctx.priority;
+        state.avgSchedIntervalMs = 0.0;
+        state.lastSchedIntervalMs = 0.0;
+        state.filteredSchedIntervalMs = 0.0;
+        state.schedIntervalNis = 0.0;
+        state.schedIntervalConfidence = 0.0;
         state.queueBin = queueBin;
         state.aoiBin = aoiBin;
         state.dwellSeconds = dwellSeconds;
         state.dwellBin = dwellBin;
 
-        uint32_t stateIdx = ComputeStateIndex(queueBin, aoiBin, dwellBin, state.currentBwpId, state.priority);
+        uint32_t stateIdx = ComputeStateIndex(queueBin, aoiBin, dwellBin, state.currentBwpId);
 
         NrBwpSwitchDecision decision;
         bool isSwitching = !state.switchingRemaining.IsZero();
@@ -904,10 +862,23 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
                 // NS_LOG_UNCOND("RUNNING WINDOW DETECTION");
                 decision = RunWindowDetectPolicy(rnti, state, ctx, dt, isSwitching);
             }
-            else
+            else if (m_internalPolicyMode == POLICY_Q_LEARNING)
             {
                 // NS_LOG_UNCOND("RUNNING Q-LEARNING");
                 decision = RunInternalPolicy(rnti, state, stateIdx, ctx, isSwitching);
+            }
+            else if (m_internalPolicyMode == NO_POLICY_BWP0)
+            {
+                decision.targetBwpId = 0;
+            }
+            else if  (m_internalPolicyMode == NO_POLICY_BWP1)
+            {
+               decision.targetBwpId = 1;
+            }
+            else
+            {
+                NS_LOG_UNCOND("UNKNOWN POLICY SPECIFIED. DEFAULTING TO NO_POLICY_BWP0");
+                decision.targetBwpId = 0;
             }
         }
 
@@ -926,15 +897,6 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
             m_decisionCb(rnti, decision);
         }
 
-        if (decision.targetPriority != std::numeric_limits<uint8_t>::max())
-        {
-            ctx.priority = decision.targetPriority;
-            if (m_gnbManager != nullptr)
-            {
-                m_gnbManager->SetUePriority(rnti, decision.targetPriority);
-            }
-        }
-
         ctx.ResetPeriod();
     }
 
@@ -943,3 +905,4 @@ NrBwpSwitchTriggerHelper::EvaluateWindow()
 }
 
 } // namespace ns3
+

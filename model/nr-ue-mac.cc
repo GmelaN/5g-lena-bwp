@@ -127,6 +127,7 @@ class UeMemberNrMacSapProvider : public NrMacSapProvider
     // inherited from NrMacSapProvider
     void TransmitPdu(TransmitPduParameters params) override;
     void BufferStatusReport(BufferStatusReportParameters params) override;
+    void NotifyRlcDlArrival(RlcDlArrivalParameters params) override;
 
   private:
     NrUeMac* m_mac;
@@ -147,6 +148,12 @@ void
 UeMemberNrMacSapProvider::BufferStatusReport(BufferStatusReportParameters params)
 {
     m_mac->DoTransmitBufferStatusReport(params);
+}
+
+void
+UeMemberNrMacSapProvider::NotifyRlcDlArrival(RlcDlArrivalParameters params)
+{
+    (void)params;
 }
 
 class NrUePhySapUser;

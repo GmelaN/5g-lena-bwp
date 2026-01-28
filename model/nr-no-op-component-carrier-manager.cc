@@ -88,6 +88,17 @@ NrNoOpComponentCarrierManager::DoTransmitBufferStatusReport(
 }
 
 void
+NrNoOpComponentCarrierManager::DoNotifyRlcDlArrival(
+    NrMacSapProvider::RlcDlArrivalParameters params)
+{
+    NS_LOG_FUNCTION(this);
+    auto ueManager = m_ccmRrcSapUser->GetUeManager(params.rnti);
+    auto it = m_macSapProvidersMap.find(ueManager->GetComponentCarrierId());
+    NS_ASSERT_MSG(it != m_macSapProvidersMap.end(), "could not find Sap for NrComponentCarrier ");
+    it->second->NotifyRlcDlArrival(params);
+}
+
+void
 NrNoOpComponentCarrierManager::DoNotifyTxOpportunity(
     NrMacSapUser::TxOpportunityParameters txOpParams)
 {

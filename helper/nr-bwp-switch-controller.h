@@ -8,10 +8,10 @@
 #include "ns3/object.h"
 #include "ns3/callback.h"
 #include "ns3/nstime.h"
-#include "ns3/nr-mac-sap.h"
 #include "ns3/bwp-manager-gnb.h"
 #include "ns3/bwp-manager-ue.h"
 #include "ns3/nr-bwp-energy-config.h"
+#include "ns3/nr-phy-mac-common.h"
 
 #include <map>
 #include <unordered_map>
@@ -29,8 +29,6 @@ class NrBwpSwitchTriggerHelper;
 struct NrBwpSwitchDecision
 {
     uint8_t targetBwpId{std::numeric_limits<uint8_t>::max()};
-    uint8_t targetPriority{std::numeric_limits<uint8_t>::max()};
-    NrMacSapProvider::BufferStatusReportParameters bsr{}; //!< Latest BSR used for the decision
 };
 
 /**
@@ -39,11 +37,14 @@ struct NrBwpSwitchDecision
 struct NrBwpSwitchState
 {
     uint8_t currentBwpId{0};
-    NrMacSapProvider::BufferStatusReportParameters bsr{}; //!< Raw BSR values
     Time switchingRemaining{Seconds(0)};                  //!< Guard window left, if any
     double avgQueueSizeBytes{0.0};                        //!< Averaged over the evaluation window
     double avgAoIMs{0.0};                                 //!< Averaged over the evaluation window (ms)
-    uint8_t priority{0};                                  //!< Scheduler priority suggestion/observation
+    double avgSchedIntervalMs{0.0};                       //!< Averaged scheduling TB size (bytes)
+    double lastSchedIntervalMs{0.0};                      //!< Last observed scheduling TB size (bytes)
+    double filteredSchedIntervalMs{0.0};                  //!< Kalman-filtered scheduling TB size (bytes)
+    double schedIntervalNis{0.0};                         //!< NIS for last scheduling update
+    double schedIntervalConfidence{0.0};                  //!< Confidence derived from filter variance
     uint8_t queueBin{0};                                  //!< Discrete bin for queue size
     uint8_t aoiBin{0};                                    //!< Discrete bin for AoI
     double dwellSeconds{0.0};                             //!< Time since last BWP switch (s)
@@ -72,14 +73,6 @@ class NrBwpSwitchController : public Object
     Ptr<NrBwpSwitchTriggerHelper> GetTriggerHelper() const;
 
     /**
-     * @brief Hook for BSR trace coming from BwpManagerGnb.
-     */
-    void HandleBsr(uint16_t rnti,
-                   uint8_t lcid,
-                   uint8_t currentBwp,
-                   const NrMacSapProvider::BufferStatusReportParameters& params);
-
-    /**
      * @brief Record enqueue time for AoI calculation.
      */
     void RecordEnqueue(uint16_t rnti, uint8_t lcid);
@@ -89,6 +82,14 @@ class NrBwpSwitchController : public Object
      */
     void RecordAck(uint16_t rnti, uint8_t lcid);
     void RecordAoiSample(Time delay);
+
+    /**
+     * @brief Trace sink for MAC DL scheduling events (per-UE).
+     */
+    void HandleDlScheduling(const NrSchedulingCallbackInfo& info);
+    static void DlSchedulingCallback(Ptr<NrBwpSwitchController> controller,
+                                     std::string path,
+                                     NrSchedulingCallbackInfo info);
 
     double GetAverageAoISeconds() const;
     double GetTotalSwitchEnergyJ() const;

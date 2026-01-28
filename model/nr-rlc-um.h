@@ -160,6 +160,9 @@ class NrRlcUm : public NrRlc
     nr::SequenceNumber10 m_expectedSeqNumber;
 
     bool m_expBsrTimer{false};
+
+    double m_lastSduArrivalTimeSeconds{0.0};
+    bool m_hasLastSduArrival{false};
 };
 
 } // namespace ns3

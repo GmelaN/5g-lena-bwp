@@ -94,6 +94,12 @@ class NrNoOpComponentCarrierManager : public NrGnbComponentCarrierManager
     virtual void DoTransmitBufferStatusReport(
         NrMacSapProvider::BufferStatusReportParameters params);
     /**
+     * @brief Notify RLC SDU arrival.
+     *
+     * @param params the arrival parameters
+     */
+    virtual void DoNotifyRlcDlArrival(NrMacSapProvider::RlcDlArrivalParameters params);
+    /**
      * @brief Notify transmit opportunity.
      *
      * @param txOpParams the NrMacSapUser::TxOpportunityParameters

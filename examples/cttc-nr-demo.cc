@@ -71,18 +71,18 @@ using namespace ns3;
  */
 NS_LOG_COMPONENT_DEFINE("CttcNrDemo");
 
-static double g_controllerQueueThresholdBytes = 0.0;
+static double g_controllerSchedIntervalThresholdMs = 0.0;
 
 static NrBwpSwitchDecision
-SimpleBsrDrivenPolicy(const NrBwpSwitchState& state)
+SimpleSchedIntervalPolicy(const NrBwpSwitchState& state)
 {
     NrBwpSwitchDecision decision;
-    decision.bsr = state.bsr;
-
-    uint32_t queued = state.bsr.txQueueSize + state.bsr.retxQueueSize;
-    if (state.switchingRemaining.IsZero() && queued > g_controllerQueueThresholdBytes)
+    double intervalMs =
+        (state.filteredSchedIntervalMs > 0.0) ? state.filteredSchedIntervalMs : state.lastSchedIntervalMs;
+    if (state.switchingRemaining.IsZero() && intervalMs > 0.0 &&
+        intervalMs <= g_controllerSchedIntervalThresholdMs)
     {
-        decision.targetBwpId = 1; // Prefer wide BWP when backlog is high
+        decision.targetBwpId = 1; // Prefer wide BWP when scheduling is frequent
     }
     else
     {
@@ -106,7 +106,7 @@ main(int argc, char* argv[])
     bool logging = false;
     bool doubleOperationalBand = true;
     bool useBwpController = false;
-    double controllerQueueThresholdBytes = 15000.0;
+    double controllerSchedIntervalThresholdMs = 5.0;
 
     // Traffic parameters (that we will use inside this script):
     uint32_t udpPacketSizeULL = 100;
@@ -151,11 +151,11 @@ main(int argc, char* argv[])
                  "and each CC will have 1 BWP that spans the entire CC.",
                  doubleOperationalBand);
     cmd.AddValue("useBwpController",
-                 "If true, enable demo BWP switch controller driven by BSR backlog",
+                 "If true, enable demo BWP switch controller driven by scheduling interval",
                  useBwpController);
-    cmd.AddValue("bwpControllerQueueThreshold",
-                 "If backlog exceeds this (bytes), controller switches UE to BWP1",
-                 controllerQueueThresholdBytes);
+    cmd.AddValue("bwpControllerSchedIntervalThresholdMs",
+                 "If last scheduling interval is <= this (ms), controller switches UE to BWP1",
+                 controllerSchedIntervalThresholdMs);
     cmd.AddValue("packetSizeUll",
                  "packet size in bytes to be used by ultra low latency traffic",
                  udpPacketSizeULL);
@@ -190,7 +190,7 @@ main(int argc, char* argv[])
 
     // Parse the command line
     cmd.Parse(argc, argv);
-    g_controllerQueueThresholdBytes = controllerQueueThresholdBytes;
+    g_controllerSchedIntervalThresholdMs = controllerSchedIntervalThresholdMs;
 
     /*
      * Check if the frequency is in the allowed range.
@@ -448,12 +448,13 @@ main(int argc, char* argv[])
     if (useBwpController && doubleOperationalBand)
     {
         bwpController = CreateObject<NrBwpSwitchController>();
+        bwpController->SetAttribute("UseTriggerHelper", BooleanValue(true));
         Ptr<NrGnbNetDevice> gnb0 = gnbNetDev.Get(0)->GetObject<NrGnbNetDevice>();
         bwpController->SetGnbManager(gnb0->GetBwpManager());
-        bwpController->SetPolicy(MakeCallback(&SimpleBsrDrivenPolicy));
-        gnb0->GetBwpManager()->TraceConnectWithoutContext(
-            "BsrReport",
-            MakeCallback(&NrBwpSwitchController::HandleBsr, bwpController));
+        bwpController->SetPolicy(MakeCallback(&SimpleSchedIntervalPolicy));
+        Config::Connect("/NodeList/*/DeviceList/*/BandwidthPartMap/*/NrGnbMac/DlScheduling",
+                        MakeBoundCallback(&NrBwpSwitchController::DlSchedulingCallback,
+                                          bwpController));
 
         // Demo switch energy: 0->1 and 1->0 each cost 0.5 J.
         auto& energyCfg = gnb0->GetBwpManager()->GetEnergyConfig();
