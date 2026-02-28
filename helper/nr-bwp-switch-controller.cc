@@ -220,9 +220,17 @@ NrBwpSwitchController::DoForceBothSides(uint16_t rnti, uint8_t targetBwp)
     }
 
     uint8_t current = m_gnbManager->GetForcedUeBwp(rnti);
+    if (current == targetBwp)
+    {
+        return;
+    }
     double e = LookupSwitchEnergy(current, targetBwp);
     m_totalSwitchEnergyJ += e;
 
+    NS_LOG_UNCOND(Simulator::Now().As(Time::MS) << "\tSWITCH_APPLY rnti=" << rnti
+                                                << " fromBwp=" << +current
+                                                << " toBwp=" << +targetBwp
+                                                << " switchEnergyJ=" << e);
     NS_LOG_INFO("Controller switching UE " << rnti << " from BWP " << +current << " to "
                                            << +targetBwp << " energyJ=" << e);
     m_gnbManager->ForceUeBwp(rnti, targetBwp);

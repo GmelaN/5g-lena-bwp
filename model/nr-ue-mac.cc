@@ -424,9 +424,9 @@ NrUeMac::DoTransmitBufferStatusReport(NrMacSapProvider::BufferStatusReportParame
     }
 
     if (m_srState == INACTIVE ||
-        (params.expBsrTimer && m_srState == ACTIVE && m_ulDci->m_harqProcess > 0 &&
+        (params.expBsrTimer && m_srState == ACTIVE && (m_ulDci != nullptr && m_ulDci->m_harqProcess > 0) &&
          m_ulDci->m_rv == 3) ||
-        (params.expBsrTimer && m_srState == ACTIVE && m_ulDci->m_harqProcess == 0))
+        (params.expBsrTimer && m_srState == ACTIVE && (m_ulDci != nullptr && m_ulDci->m_harqProcess == 0)))
     {
         if (m_srState == INACTIVE)
         {

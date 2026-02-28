@@ -28,8 +28,8 @@ BwpManagerGnb::BwpManagerGnb()
     : NrRrComponentCarrierManager()
 {
     NS_LOG_FUNCTION(this);
-    m_energyConfig.SetSwitchEnergy(0, 1, 0.0015);
-    m_energyConfig.SetSwitchEnergy(1, 0, 0.0015);
+    m_energyConfig.SetSwitchEnergy(0, 1, 0.0005);
+    m_energyConfig.SetSwitchEnergy(1, 0, 0.0005);
 }
 
 BwpManagerGnb::~BwpManagerGnb()
