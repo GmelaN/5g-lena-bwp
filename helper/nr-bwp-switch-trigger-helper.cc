@@ -854,6 +854,9 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
         ctx.pendingSwitchEnergy = 0.0;
         return decision;
     }
+    
+    double rE = ((ctx.hasPrev) ? (-(ctx.energySumJ - ctx.lastRewardEnergySumJ + ctx.pendingSwitchEnergy) / energyNorm) : 0.0);
+    double rA = ((ctx.hasPrev) ? (-( (ctx.aoiSamples >= ctx.lastRewardAoiSamples && (ctx.aoiSamples - ctx.lastRewardAoiSamples) > 0) ? ((ctx.aoiSumMs - ctx.lastRewardAoiSumMs) / static_cast<double>(ctx.aoiSamples - ctx.lastRewardAoiSamples)) : 0.0 ) / aoiNorm) : 0.0);
 
     ctx.lastRewardEnergySumJ = ctx.energySumJ;
     ctx.lastRewardAoiSumMs = ctx.aoiSumMs;
@@ -943,12 +946,12 @@ NrBwpSwitchTriggerHelper::RunInternalPolicy(uint16_t rnti,
                                    << " tgtPri=" << +decision.targetPriority
                                    << " eps=" << epsilon
                                    << " alpha=" << ((ctx.hasPrev) ? std::max(m_alphaMin, m_alpha / std::sqrt(static_cast<double>(std::max<uint32_t>(1, visitTable[ctx.prevStateIdx * m_actionCount + ctx.prevActionIdx])))) : m_alpha)
-                                   << " rE=" << ((ctx.hasPrev) ? (-(ctx.energySumJ - ctx.lastRewardEnergySumJ + ctx.pendingSwitchEnergy) / energyNorm) : 0.0)
+                                   << " rE=" << rE
                                    << " rEnergySumJ=" << ((ctx.hasPrev) ? ctx.energySumJ : 0.0)
                                    << " rPendingSwitchEnergy=" << ((ctx.hasPrev) ? ctx.pendingSwitchEnergy : 0.0)
                                    << " rENorm=" << energyNorm
                                    << " rSwitchPenaltyJ=" << ((ctx.hasPrev && ctx.pendingSwitch) ? m_switchPenaltyJ : 0.0)
-                                   << " rA=" << ((ctx.hasPrev) ? (-( (ctx.aoiSamples >= ctx.lastRewardAoiSamples && (ctx.aoiSamples - ctx.lastRewardAoiSamples) > 0) ? ((ctx.aoiSumMs - ctx.lastRewardAoiSumMs) / static_cast<double>(ctx.aoiSamples - ctx.lastRewardAoiSamples)) : 0.0 ) / aoiNorm) : 0.0)
+                                   << " rA=" << rA
                                    << " rAvgAoI=" << ((ctx.hasPrev) ? state.avgAoIMs : 0.0)
                                    << " rAoINorm=" << aoiNorm
                                    << " wE=" << prefEnergy
@@ -1224,7 +1227,7 @@ NrBwpSwitchTriggerHelper::EvaluateUe(uint16_t rnti, bool resetPeriod)
     double avgAoIMs = (ctx.aoiSamples > 0) ? ctx.aoiSumMs / static_cast<double>(ctx.aoiSamples) : 0.0;
     bool isInternalQlearning =
         m_enableInternalPolicy && m_internalPolicyMode == POLICY_Q_LEARNING && m_policy.IsNull();
-    if (isInternalQlearning && ctx.aoiSamples == 0 || ctx.queueSamples == 0)
+    if (isInternalQlearning && ctx.aoiSamples == 0 && ctx.queueSamples == 0)
     {
         // Skip no-observation windows to avoid treating "no packet observed" as AoI=0/queue=0.
         return;

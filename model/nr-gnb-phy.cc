@@ -1703,7 +1703,9 @@ NrGnbPhy::EndSlot()
     {
         NS_LOG_INFO("Release the channel because we did not have any data to maintain the grant");
         m_channelStatus = NONE;
-        m_channelLostTimer.Cancel();
+        // Remove the scheduled event from the queue to avoid accumulating
+        // cancelled entries with occupied scheduler keys.
+        Simulator::Remove(m_channelLostTimer);
     }
 
     NS_LOG_DEBUG("Slot started at " << m_lastSlotStart << " ended");
