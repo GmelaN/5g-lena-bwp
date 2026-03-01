@@ -322,6 +322,34 @@ NrMacSchedulerNs3::GetStartMcsDl() const
 }
 
 void
+NrMacSchedulerNs3::SetDlMcsOverrideForRnti(uint16_t rnti, uint8_t mcs)
+{
+    NS_LOG_FUNCTION(this << rnti << +mcs);
+    m_dlMcsOverrides[rnti] = mcs;
+
+    auto itUe = m_ueMap.find(rnti);
+    if (itUe != m_ueMap.end())
+    {
+        itUe->second->m_dlMcs = mcs;
+        itUe->second->m_startMcsDlUe = mcs;
+    }
+}
+
+void
+NrMacSchedulerNs3::ClearDlMcsOverrideForRnti(uint16_t rnti)
+{
+    NS_LOG_FUNCTION(this << rnti);
+    m_dlMcsOverrides.erase(rnti);
+}
+
+void
+NrMacSchedulerNs3::ClearAllDlMcsOverrides()
+{
+    NS_LOG_FUNCTION(this);
+    m_dlMcsOverrides.clear();
+}
+
+void
 NrMacSchedulerNs3::SetMaxDlMcs(int8_t v)
 {
     NS_LOG_FUNCTION(this);
@@ -595,6 +623,12 @@ NrMacSchedulerNs3::DoCschedUeConfigReq(
         UeInfoOf(*itUe)->m_dlAmc = m_dlAmc;
         UeInfoOf(*itUe)->m_ulAmc = m_ulAmc;
         UeInfoOf(*itUe)->m_mcsCsiSource = m_mcsCsiSource;
+        auto mcsOverrideIt = m_dlMcsOverrides.find(params.m_rnti);
+        if (mcsOverrideIt != m_dlMcsOverrides.end())
+        {
+            UeInfoOf(*itUe)->m_dlMcs = mcsOverrideIt->second;
+            UeInfoOf(*itUe)->m_startMcsDlUe = mcsOverrideIt->second;
+        }
 
         NrMacSchedulerSrs::SrsPeriodicityAndOffset srs = m_schedulerSrs->AddUe();
 
@@ -640,11 +674,27 @@ NrMacSchedulerNs3::DoCschedUeReleaseReq(
 
     m_schedulerSrs->RemoveUe(itUe->second->m_srsOffset);
     m_ueMap.erase(itUe);
+    m_dlMcsOverrides.erase(params.m_rnti);
 
     // When it will be the case of reducing the periodicity? Question for the
     // future...
 
     NS_LOG_INFO("Release RNTI " << params.m_rnti);
+}
+
+void
+NrMacSchedulerNs3::ApplyDlMcsOverrides()
+{
+    NS_LOG_FUNCTION(this);
+    for (const auto& [rnti, mcs] : m_dlMcsOverrides)
+    {
+        auto itUe = m_ueMap.find(rnti);
+        if (itUe != m_ueMap.end())
+        {
+            itUe->second->m_dlMcs = mcs;
+            itUe->second->m_startMcsDlUe = mcs;
+        }
+    }
 }
 
 uint64_t
@@ -1849,6 +1899,9 @@ NrMacSchedulerNs3::ScheduleDl(const NrMacSchedSapProvider::SchedDlTriggerReqPara
         ulAllocations.m_totUlSym += m_ulCtrlSymbols;
         dlSlot.m_slotAllocInfo.m_numSymAlloc += m_ulCtrlSymbols;
     }
+
+    // Apply per-UE MCS overrides right before selecting active UEs and generating DL DCI.
+    ApplyDlMcsOverrides();
 
     // compute active ue in the current subframe, group them by BeamId
     ActiveHarqMap activeDlHarq;

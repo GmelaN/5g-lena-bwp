@@ -188,7 +188,7 @@ BwpManagerGnb::GetBwpIndex(uint16_t rnti, uint8_t lcid)
         return forced->second;
     }
 
-    NS_LOG_UNCOND("WARN: RETURNING DEFAULT BWP FOR UNKNOWN RNTI.");
+    NS_LOG_WARN("WARN: RETURNING DEFAULT BWP FOR UNKNOWN RNTI.");
 
     return 0;
     // NS_ASSERT(false);

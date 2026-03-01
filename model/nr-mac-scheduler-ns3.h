@@ -17,7 +17,9 @@
 
 #include <functional>
 #include <list>
+#include <map>
 #include <memory>
+#include <unordered_map>
 
 namespace ns3
 {
@@ -433,6 +435,27 @@ class NrMacSchedulerNs3 : public NrMacScheduler
      * @return the value
      */
     uint8_t GetStartMcsDl() const;
+
+    /**
+     * @brief Set an override DL MCS for a specific UE (RNTI).
+     * @param rnti UE RNTI
+     * @param mcs DL MCS value [0..31]
+     *
+     * The override is applied before DL scheduling and remains active until
+     * cleared explicitly.
+     */
+    void SetDlMcsOverrideForRnti(uint16_t rnti, uint8_t mcs);
+
+    /**
+     * @brief Clear an override DL MCS for a specific UE (RNTI).
+     * @param rnti UE RNTI
+     */
+    void ClearDlMcsOverrideForRnti(uint16_t rnti);
+
+    /**
+     * @brief Clear all override DL MCS entries.
+     */
+    void ClearAllDlMcsOverrides();
 
     /**
      * @brief Set the maximum index for the DL MCS
@@ -942,6 +965,7 @@ class NrMacSchedulerNs3 : public NrMacScheduler
     void CallNrFhControlForMapUpdate(
         const std::deque<VarTtiAllocInfo>& allocation,
         const std::unordered_map<uint16_t, std::shared_ptr<NrMacSchedulerUeInfo>>& ueMap);
+    void ApplyDlMcsOverrides();
 
     std::unordered_map<uint16_t, std::shared_ptr<NrMacSchedulerUeInfo>>
         m_ueMap; //!< The map of between RNTI and their data
@@ -956,6 +980,7 @@ class NrMacSchedulerNs3 : public NrMacScheduler
     bool m_fixedMcsUl{false};  //!< Fixed MCS for *all* UE in UL
     uint8_t m_startMcsDl{0};   //!< Starting (or fixed) value for DL MCS
     uint8_t m_startMcsUl{0};   //!< Starting (or fixed) value for UL MCS
+    std::unordered_map<uint16_t, uint8_t> m_dlMcsOverrides; //!< Per-RNTI DL MCS override
     int8_t m_maxDlMcs{0};      //!< Maximum index for DL MCS
     Time m_cqiTimersThreshold; //!< The time while a CQI is valid
 

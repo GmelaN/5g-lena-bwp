@@ -423,7 +423,7 @@ NrGnbMac::GetTypeId()
                 MakeUintegerChecker<uint8_t>())
             .AddAttribute("EnableRlcIatKfLog",
                           "Enable logging of RLC SDU arrival IAT Kalman filter outputs.",
-                          BooleanValue(true),
+                          BooleanValue(false),
                           MakeBooleanAccessor(&NrGnbMac::m_enableRlcIatKfLog),
                           MakeBooleanChecker())
             .AddAttribute("RlcIatKfProcessNoiseLevel",
@@ -453,7 +453,7 @@ NrGnbMac::GetTypeId()
                           MakeDoubleChecker<double>())
             .AddAttribute("EnableRlcBytesKfLog",
                           "Enable logging of RLC SDU arrival bytes Kalman filter outputs.",
-                          BooleanValue(true),
+                          BooleanValue(false),
                           MakeBooleanAccessor(&NrGnbMac::m_enableRlcBytesKfLog),
                           MakeBooleanChecker())
             .AddAttribute("RlcBytesKfProcessNoiseLevel",
