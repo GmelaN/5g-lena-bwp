@@ -120,6 +120,15 @@ class NrRlc : public Object // SimpleRefCount<NrRlc>
                                           uint32_t bytes,
                                           uint64_t delay);
 
+    /**
+     * TracedCallback signature for current transmit buffer size.
+     *
+     * @param [in] rnti C-RNTI of the RLC instance.
+     * @param [in] lcid Logical channel id of the RLC instance.
+     * @param [in] bytes Current transmit buffer size in bytes.
+     */
+    typedef void (*TxBufferSizeTracedCallback)(uint16_t rnti, uint8_t lcid, uint32_t bytes);
+
     /// @todo MRE What is the sense to duplicate all the interfaces here???
     // NB to avoid the use of multiple inheritance
 
@@ -174,6 +183,10 @@ class NrRlc : public Object // SimpleRefCount<NrRlc>
      * transmission.
      */
     TracedCallback<Ptr<const Packet>> m_txDropTrace;
+    /**
+     * Current transmit buffer size of this RLC entity.
+     */
+    TracedCallback<uint16_t, uint8_t, uint32_t> m_txBufferSizeTrace;
 };
 
 /**

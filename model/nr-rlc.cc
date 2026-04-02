@@ -105,7 +105,11 @@ NrRlc::GetTypeId()
                                             "Trace source indicating a packet "
                                             "has been dropped before transmission",
                                             MakeTraceSourceAccessor(&NrRlc::m_txDropTrace),
-                                            "ns3::Packet::TracedCallback");
+                                            "ns3::Packet::TracedCallback")
+                            .AddTraceSource("TxBufferSize",
+                                            "Current transmit buffer size in bytes.",
+                                            MakeTraceSourceAccessor(&NrRlc::m_txBufferSizeTrace),
+                                            "ns3::NrRlc::TxBufferSizeTracedCallback");
     return tid;
 }
 

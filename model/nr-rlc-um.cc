@@ -132,6 +132,7 @@ NrRlcUm::DoTransmitPdcpPdu(Ptr<Packet> p)
         m_txBufferSize += p->GetSize();
         NS_LOG_LOGIC("NumOfBuffers = " << m_txBuffer.size());
         NS_LOG_LOGIC("txBufferSize = " << m_txBufferSize);
+        m_txBufferSizeTrace(m_rnti, m_lcid, m_txBufferSize);
 
         if (m_macSapProvider)
         {
@@ -216,6 +217,7 @@ NrRlcUm::DoNotifyTxOpportunity(NrMacSapUser::TxOpportunityParameters txOpParams)
     m_txBufferSize -= firstSegment->GetSize();
     NS_LOG_LOGIC("txBufferSize      = " << m_txBufferSize);
     m_txBuffer.erase(m_txBuffer.begin());
+    m_txBufferSizeTrace(m_rnti, m_lcid, m_txBufferSize);
 
     while (firstSegment && (firstSegment->GetSize() > 0) && (nextSegmentSize > 0))
     {
@@ -271,6 +273,7 @@ NrRlcUm::DoNotifyTxOpportunity(NrMacSapUser::TxOpportunityParameters txOpParams)
                 NS_LOG_LOGIC("    TX buffers = " << m_txBuffer.size());
                 NS_LOG_LOGIC("    Front buffer size = " << m_txBuffer.begin()->m_pdu->GetSize());
                 NS_LOG_LOGIC("    txBufferSize = " << m_txBufferSize);
+                m_txBufferSizeTrace(m_rnti, m_lcid, m_txBufferSize);
             }
             else
             {
@@ -372,6 +375,7 @@ NrRlcUm::DoNotifyTxOpportunity(NrMacSapUser::TxOpportunityParameters txOpParams)
             m_txBufferSize -= firstSegment->GetSize();
             m_txBuffer.pop_front();
             NS_LOG_LOGIC("        txBufferSize = " << m_txBufferSize);
+            m_txBufferSizeTrace(m_rnti, m_lcid, m_txBufferSize);
         }
     }
 
