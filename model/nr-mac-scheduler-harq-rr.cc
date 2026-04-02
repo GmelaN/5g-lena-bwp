@@ -86,7 +86,8 @@ NrMacSchedulerHarqRr::InstallReshapeAllocation(
 std::vector<BeamId>
 NrMacSchedulerHarqRr::GetBeamOrderRR(NrMacSchedulerNs3::ActiveHarqMap activeHarqMap) const
 {
-    std::vector<BeamId> ret(activeHarqMap.size());
+    std::vector<BeamId> ret;
+    ret.reserve(activeHarqMap.size());
 
     for (const auto& el : activeHarqMap)
     {
@@ -99,13 +100,18 @@ NrMacSchedulerHarqRr::GetBeamOrderRR(NrMacSchedulerNs3::ActiveHarqMap activeHarq
     }
 
     // Find first active beam in the round-robin queue
-    for (size_t i = 0; i < m_rrBeams.size(); ++i)
+    size_t rrCount = m_rrBeams.size();
+    for (size_t i = 0; i < rrCount; ++i)
     {
         // If front beam in round-robin queue is active,
         // put it at the beginning of the order
         if (activeHarqMap.find(m_rrBeams.front()) != activeHarqMap.end())
         {
-            ret[i] = m_rrBeams.front();
+            ret.push_back(m_rrBeams.front());
+            if (ret.size() == activeHarqMap.size())
+            {
+                break;
+            }
         }
         // Move round-robin front queue item to the end
         m_rrBeams.push_back(m_rrBeams.front());
@@ -173,11 +179,24 @@ NrMacSchedulerHarqRr::ScheduleDlHarq(
             NS_ASSERT_MSG(harqProcess.m_status == HarqProcess::RECEIVED_FEEDBACK,
                           "Process " << static_cast<uint32_t>(it->first)
                                      << " is not in RECEIVED_FEEDBACK status");
+            NS_ABORT_MSG_IF(harqProcess.m_dciElement == nullptr,
+                            "Null DL HARQ DCI element for process "
+                                << static_cast<uint32_t>(it->first));
 
             harqProcess.m_status = HarqProcess::WAITING_FEEDBACK;
             harqProcess.m_timer = 0;
 
             auto& dciInfoReTx = harqProcess.m_dciElement;
+            NS_ABORT_MSG_IF(dciInfoReTx->m_rbgBitmask.size() != GetBandwidthInRbg(),
+                            "DL HARQ RBG bitmask size mismatch for UE "
+                                << static_cast<uint32_t>(dciInfoReTx->m_rnti) << " harq "
+                                << static_cast<uint32_t>(dciInfoReTx->m_harqProcess)
+                                << " bitmask=" << dciInfoReTx->m_rbgBitmask.size()
+                                << " bandwidthInRbg=" << GetBandwidthInRbg()
+                                << " bwpIndex=" << static_cast<uint32_t>(dciInfoReTx->m_bwpIndex));
+            NS_ABORT_MSG_IF(ueMap.find(dciInfoReTx->m_rnti) == ueMap.end(),
+                            "DL HARQ UE not found in ueMap for RNTI "
+                                << static_cast<uint32_t>(dciInfoReTx->m_rnti));
 
             uint32_t rbgAssigned =
                 std::count(dciInfoReTx->m_rbgBitmask.begin(), dciInfoReTx->m_rbgBitmask.end(), 1) *
@@ -248,7 +267,6 @@ NrMacSchedulerHarqRr::ScheduleDlHarq(
             {
                 // If not reshaping, we just change at most the starting symbol.
                 // But first we check if there are collisions.
-                symAvailBackup -= harqProcess.m_dciElement->m_numSym;
                 bool collision = false;
                 for (std::size_t i = 0; i < dlBitmaskBackup.size(); i++)
                 {

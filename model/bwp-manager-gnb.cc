@@ -280,7 +280,7 @@ BwpManagerGnb::ForceUeBwp(uint16_t rnti, uint8_t bwpId)
     {
         kv.second->SetUeActive(rnti, false);
     }
-    Simulator::Schedule(m_switchingDelay, [=, this, fromBwp, toBwp]() {
+    Simulator::Schedule(m_switchingDelay, [=, this]() {
         m_forcedUeBwp[rnti] = bwpId;
         m_switchingUntil.erase(rnti);
         for (const auto& kv : m_macObjects)

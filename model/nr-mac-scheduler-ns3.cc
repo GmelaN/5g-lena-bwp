@@ -349,6 +349,26 @@ NrMacSchedulerNs3::ClearAllDlMcsOverrides()
     m_dlMcsOverrides.clear();
 }
 
+uint8_t
+NrMacSchedulerNs3::EstimateDlMcsFromCurrentCqiForRnti(uint16_t rnti) const
+{
+    NS_LOG_FUNCTION(this << rnti);
+    auto itUe = m_ueMap.find(rnti);
+    if (itUe == m_ueMap.end())
+    {
+        return m_startMcsDl;
+    }
+
+    const auto& ue = itUe->second;
+    if (!ue)
+    {
+        return m_startMcsDl;
+    }
+
+    return std::min(static_cast<uint8_t>(m_dlAmc->GetMcsFromCqi(ue->m_dlCqi.m_wbCqi)),
+                    static_cast<uint8_t>(m_maxDlMcs));
+}
+
 void
 NrMacSchedulerNs3::SetMaxDlMcs(int8_t v)
 {
@@ -501,6 +521,39 @@ bool
 NrMacSchedulerNs3::IsHarqReTxEnable() const
 {
     return m_enableHarqReTx;
+}
+
+void
+NrMacSchedulerNs3::FlushDlHarqProcesses(uint16_t rnti)
+{
+    NS_LOG_FUNCTION(this << rnti);
+
+    auto ueIt = m_ueMap.find(rnti);
+    if (ueIt == m_ueMap.end())
+    {
+        return;
+    }
+
+    std::vector<uint8_t> activeIds;
+    auto& dlHarq = ueIt->second->m_dlHarq;
+    for (auto it = dlHarq.Begin(); it != dlHarq.End(); ++it)
+    {
+        if (it->second.m_active)
+        {
+            activeIds.push_back(it->first);
+        }
+    }
+
+    for (uint8_t harqId : activeIds)
+    {
+        dlHarq.Erase(harqId);
+    }
+
+    m_dlHarqToRetransmit.erase(
+        std::remove_if(m_dlHarqToRetransmit.begin(),
+                       m_dlHarqToRetransmit.end(),
+                       [rnti](const DlHarqInfo& info) { return info.m_rnti == rnti; }),
+        m_dlHarqToRetransmit.end());
 }
 
 void
@@ -1310,6 +1363,10 @@ NrMacSchedulerNs3::ComputeActiveHarq(ActiveHarqMap* activeDlHarq,
     {
         uint16_t rnti = feedback.m_rnti;
         auto& schedInfo = m_ueMap.find(rnti)->second;
+        NS_ABORT_MSG_IF(!schedInfo->m_dlHarq.Exist(feedback.m_harqProcessId),
+                        "DL HARQ process does not exist for UE "
+                            << rnti << " harqId "
+                            << static_cast<uint32_t>(feedback.m_harqProcessId));
         auto beamIterator = activeDlHarq->find(schedInfo->m_beamId);
 
         if (beamIterator == activeDlHarq->end())
@@ -2549,6 +2606,12 @@ NrMacSchedulerNs3::DoSchedDlTriggerReq(
         for (auto it = dlHarqFeedback.begin(); it != dlHarqFeedback.end(); /* no inc */)
         {
             auto& ueInfo = m_ueMap.find(it->m_rnti)->second;
+            if (!ueInfo->m_dlHarq.Exist(it->m_harqProcessId))
+            {
+                NS_ABORT_MSG("Received DL HARQ feedback for missing process. UE "
+                             << it->m_rnti << " harqId "
+                             << static_cast<uint32_t>(it->m_harqProcessId));
+            }
             auto& process = ueInfo->m_dlHarq.Find(it->m_harqProcessId)->second;
             NS_LOG_INFO("Analyzing feedback for UE " << it->m_rnti << " process "
                                                      << static_cast<uint32_t>(it->m_harqProcessId));

@@ -633,6 +633,41 @@ NrGnbMac::IsHarqReTxEnable() const
 }
 
 void
+NrGnbMac::FlushDlHarqBuffers(uint16_t rnti)
+{
+    NS_LOG_FUNCTION(this << rnti);
+
+    auto it = m_miDlHarqProcessesPackets.find(rnti);
+    if (it != m_miDlHarqProcessesPackets.end())
+    {
+        for (auto& process : it->second)
+        {
+            process.m_pktBurst = CreateObject<PacketBurst>();
+            process.m_lcidList.clear();
+        }
+    }
+
+    m_dlHarqInfoReceived.erase(
+        std::remove_if(m_dlHarqInfoReceived.begin(),
+                       m_dlHarqInfoReceived.end(),
+                       [rnti](const DlHarqInfo& info) { return info.m_rnti == rnti; }),
+        m_dlHarqInfoReceived.end());
+
+    for (auto mapIt = m_macPduMap.begin(); mapIt != m_macPduMap.end();)
+    {
+        uint16_t keyRnti = static_cast<uint16_t>((mapIt->first >> 8) & 0xFFFF);
+        if (keyRnti == rnti)
+        {
+            mapIt = m_macPduMap.erase(mapIt);
+        }
+        else
+        {
+            ++mapIt;
+        }
+    }
+}
+
+void
 NrGnbMac::ReceiveRachPreamble(uint32_t raId)
 {
     Ptr<NrRachPreambleMessage> rachMsg = Create<NrRachPreambleMessage>();

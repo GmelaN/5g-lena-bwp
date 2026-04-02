@@ -125,6 +125,12 @@ class NrGnbMac : public Object
     virtual bool IsHarqReTxEnable() const;
 
     /**
+     * @brief Drop buffered DL HARQ state for one UE on this MAC/BWP.
+     * @param rnti UE identifier
+     */
+    void FlushDlHarqBuffers(uint16_t rnti);
+
+    /**
      * @brief Perform DL scheduling decision for the indicated slot
      * @param sfnSf the slot to fill with scheduling decisions
      * @param type TDD slot type

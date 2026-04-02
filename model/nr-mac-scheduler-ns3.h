@@ -458,6 +458,14 @@ class NrMacSchedulerNs3 : public NrMacScheduler
     void ClearAllDlMcsOverrides();
 
     /**
+     * @brief Estimate the current DL MCS for a UE from the scheduler's CQI state,
+     *        without applying any RL override offset.
+     * @param rnti UE RNTI
+     * @return CQI-derived DL MCS estimate, or starting MCS if unavailable
+     */
+    uint8_t EstimateDlMcsFromCurrentCqiForRnti(uint16_t rnti) const;
+
+    /**
      * @brief Set the maximum index for the DL MCS
      * @param v the value
      */
@@ -578,6 +586,12 @@ class NrMacSchedulerNs3 : public NrMacScheduler
      * @return Returns true if HARQ ReTx are enabled; otherwise false
      */
     bool IsHarqReTxEnable() const override;
+
+    /**
+     * @brief Drop all DL HARQ state for one UE on this scheduler/BWP.
+     * @param rnti UE identifier
+     */
+    void FlushDlHarqProcesses(uint16_t rnti);
 
     /**
      * @brief Sets the default RACH UL
