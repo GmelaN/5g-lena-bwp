@@ -109,7 +109,12 @@ NrRlc::GetTypeId()
                             .AddTraceSource("TxBufferSize",
                                             "Current transmit buffer size in bytes.",
                                             MakeTraceSourceAccessor(&NrRlc::m_txBufferSizeTrace),
-                                            "ns3::NrRlc::TxBufferSizeTracedCallback");
+                                            "ns3::NrRlc::TxBufferSizeTracedCallback")
+                            .AddTraceSource("TxEnqueue",
+                                            "Trace source indicating a packet "
+                                            "has been admitted to the RLC transmit buffer",
+                                            MakeTraceSourceAccessor(&NrRlc::m_txEnqueueTrace),
+                                            "ns3::Packet::TracedCallback");
     return tid;
 }
 

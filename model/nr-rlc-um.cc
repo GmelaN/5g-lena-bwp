@@ -133,6 +133,7 @@ NrRlcUm::DoTransmitPdcpPdu(Ptr<Packet> p)
         NS_LOG_LOGIC("NumOfBuffers = " << m_txBuffer.size());
         NS_LOG_LOGIC("txBufferSize = " << m_txBufferSize);
         m_txBufferSizeTrace(m_rnti, m_lcid, m_txBufferSize);
+        m_txEnqueueTrace(p);
 
         if (m_macSapProvider)
         {

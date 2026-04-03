@@ -498,6 +498,10 @@ class NrGnbMac : public Object
      * Trace DL HARQ info list elements.
      */
     TracedCallback<const DlHarqInfo&> m_dlHarqFeedback;
+    TracedCallback<Ptr<const Packet>>
+        m_dlHarqFinalDropTrace; //!< Packet-level final drop for DL HARQ exhaustion/flush.
+
+    void TraceDlHarqFinalDrops(const Ptr<PacketBurst>& packetBurst);
 
     void ProcessRaPreambles(const SfnSf& sfnSf);
     void SetNumberOfRaPreambles(uint8_t numberOfRaPreambles);

@@ -161,6 +161,7 @@ NrRlcAm::DoTransmitPdcpPdu(Ptr<Packet> p)
         m_txonBufferSize += p->GetSize();
         NS_LOG_LOGIC("NumOfBuffers = " << m_txonBuffer.size());
         NS_LOG_LOGIC("txonBufferSize = " << m_txonBufferSize);
+        m_txEnqueueTrace(p);
     }
     else
     {

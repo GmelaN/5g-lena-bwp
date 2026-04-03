@@ -505,6 +505,10 @@ NrGnbMac::GetTypeId()
                             "Harq feedback.",
                             MakeTraceSourceAccessor(&NrGnbMac::m_dlHarqFeedback),
                             "ns3::NrGnbMac::DlHarqFeedbackTracedCallback")
+            .AddTraceSource("DlHarqFinalDrop",
+                            "Packet-level final drop for exhausted or flushed DL HARQ.",
+                            MakeTraceSourceAccessor(&NrGnbMac::m_dlHarqFinalDropTrace),
+                            "ns3::Packet::TracedCallback")
             .AddAttribute("NumberOfRaPreambles",
                           "How many random access preambles are available for the contention based "
                           "RACH process",
@@ -633,6 +637,20 @@ NrGnbMac::IsHarqReTxEnable() const
 }
 
 void
+NrGnbMac::TraceDlHarqFinalDrops(const Ptr<PacketBurst>& packetBurst)
+{
+    if (!packetBurst)
+    {
+        return;
+    }
+
+    for (auto it = packetBurst->Begin(); it != packetBurst->End(); ++it)
+    {
+        m_dlHarqFinalDropTrace(*it);
+    }
+}
+
+void
 NrGnbMac::FlushDlHarqBuffers(uint16_t rnti)
 {
     NS_LOG_FUNCTION(this << rnti);
@@ -642,6 +660,7 @@ NrGnbMac::FlushDlHarqBuffers(uint16_t rnti)
     {
         for (auto& process : it->second)
         {
+            TraceDlHarqFinalDrops(process.m_pktBurst);
             process.m_pktBurst = CreateObject<PacketBurst>();
             process.m_lcidList.clear();
         }
@@ -1172,6 +1191,7 @@ NrGnbMac::DoDlHarqFeedback(const DlHarqInfo& params)
     // Update HARQ buffer
     auto it = m_miDlHarqProcessesPackets.find(params.m_rnti);
     NS_ASSERT(it != m_miDlHarqProcessesPackets.end());
+    uint8_t maxHarqReTx = IsHarqReTxEnable() ? 3 : 0;
 
     if (params.m_harqStatus == DlHarqInfo::ACK)
     {
@@ -1183,6 +1203,13 @@ NrGnbMac::DoDlHarqFeedback(const DlHarqInfo& params)
     }
     else if (params.m_harqStatus == DlHarqInfo::NACK)
     {
+        if (params.m_numRetx >= maxHarqReTx)
+        {
+            TraceDlHarqFinalDrops((*it).second.at(params.m_harqProcessId).m_pktBurst);
+            Ptr<PacketBurst> emptyBuf = CreateObject<PacketBurst>();
+            (*it).second.at(params.m_harqProcessId).m_pktBurst = emptyBuf;
+            (*it).second.at(params.m_harqProcessId).m_lcidList.clear();
+        }
         NS_LOG_DEBUG(this << " HARQ-NACK UE RNTI" << params.m_rnti << " HARQ Process ID "
                           << (uint16_t)params.m_harqProcessId);
     }
