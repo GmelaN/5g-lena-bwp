@@ -156,6 +156,7 @@ set(source_files
     model/nr-mac-scheduler-lcg.cc
     model/nr-mac-scheduler-ns3.cc
     model/nr-mac-scheduler-ofdma-aequitas.cc
+    model/nr-mac-scheduler-ofdma-baseline.cc
     model/nr-mac-scheduler-ofdma-mr.cc
     model/nr-mac-scheduler-ofdma-pf.cc
     model/nr-mac-scheduler-ofdma-qos.cc
@@ -364,6 +365,7 @@ set(header_files
     model/nr-mac-scheduler-lcg.h
     model/nr-mac-scheduler-ns3.h
     model/nr-mac-scheduler-ofdma-aequitas.h
+    model/nr-mac-scheduler-ofdma-baseline.h
     model/nr-mac-scheduler-ofdma-mr.h
     model/nr-mac-scheduler-ofdma-pf.h
     model/nr-mac-scheduler-ofdma-qos.h
