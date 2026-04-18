@@ -207,6 +207,14 @@ NrPdcp::DoReceivePdu(Ptr<Packet> p)
     NrPdcpHeader pdcpHeader;
     p->RemoveHeader(pdcpHeader);
     NS_LOG_LOGIC("PDCP header: " << pdcpHeader);
+    if (pdcpHeader.GetDcBit() != NrPdcpHeader::DATA_PDU)
+    {
+        NS_LOG_WARN("Dropping non-data PDCP PDU at receiver"
+                    << " rnti=" << m_rnti << " lcid=" << +m_lcid
+                    << " dcBit=" << +pdcpHeader.GetDcBit()
+                    << " size=" << p->GetSize());
+        return;
+    }
 
     m_rxSequenceNumber = pdcpHeader.GetSequenceNumber() + 1;
     if (m_rxSequenceNumber > m_maxPdcpSn)

@@ -961,8 +961,10 @@ NrGnbPhy::GenerateAllocationStatistics(const SlotAllocInfo& allocInfo) const
     uint32_t dataSym = 0;
     uint32_t ctrlSym = 0;
 
-    int lastSymStart = -1;
-    uint32_t symUsed = 0;
+    const uint32_t totalSymbols = GetSymbolsPerSlot();
+    std::vector<uint8_t> symUsedMask(totalSymbols, 0);
+    std::vector<uint8_t> dataSymMask(totalSymbols, 0);
+    std::vector<uint8_t> ctrlSymMask(totalSymbols, 0);
 
     for (const auto& allocation : allocInfo.m_varTtiAllocInfo)
     {
@@ -976,8 +978,6 @@ NrGnbPhy::GenerateAllocationStatistics(const SlotAllocInfo& allocInfo) const
             activeUe.insert(allocation.m_dci->m_rnti);
         }
 
-        NS_ASSERT(lastSymStart <= allocation.m_dci->m_symStart);
-
         auto rbgUsed = (rbg * GetNumRbPerRbg()) * allocation.m_dci->m_numSym;
         if (allocation.m_dci->m_type == DciInfoElementTdma::DATA ||
             allocation.m_dci->m_type == DciInfoElementTdma::MSG3)
@@ -989,27 +989,32 @@ NrGnbPhy::GenerateAllocationStatistics(const SlotAllocInfo& allocInfo) const
             ctrlReg += rbgUsed;
         }
 
-        if (lastSymStart != allocation.m_dci->m_symStart)
+        const uint32_t symStart = std::min<uint32_t>(allocation.m_dci->m_symStart, totalSymbols);
+        const uint32_t symEnd =
+            std::min<uint32_t>(symStart + allocation.m_dci->m_numSym, totalSymbols);
+        for (uint32_t sym = symStart; sym < symEnd; ++sym)
         {
-            symUsed += allocation.m_dci->m_numSym;
-
             if (allocation.m_dci->m_type == DciInfoElementTdma::DATA ||
                 allocation.m_dci->m_type == DciInfoElementTdma::MSG3)
             {
-                dataSym += allocation.m_dci->m_numSym;
+                dataSymMask[sym] = 1;
             }
             else
             {
-                ctrlSym += allocation.m_dci->m_numSym;
+                ctrlSymMask[sym] = 1;
             }
+            symUsedMask[sym] = 1;
         }
-
-        lastSymStart = allocation.m_dci->m_symStart;
     }
+
+    const uint32_t symUsed = std::count(symUsedMask.begin(), symUsedMask.end(), 1);
+    dataSym = std::count(dataSymMask.begin(), dataSymMask.end(), 1);
+    ctrlSym = std::count(ctrlSymMask.begin(), ctrlSymMask.end(), 1);
 
     NS_ASSERT_MSG(symUsed == allocInfo.m_numSymAlloc,
                   "Allocated " << +allocInfo.m_numSymAlloc << " but only " << symUsed
-                               << " written in stats");
+                               << " written in stats. Slot allocation dump:\n"
+                               << allocInfo);
 
     m_phySlotDataStats(allocInfo.m_sfnSf,
                        activeUe.size(),
